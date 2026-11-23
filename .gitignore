@@ -196,3 +196,9 @@ Gemini_*.jpeg
 # Локальные настройки и отчёты
 Reports/
 rusecurity.json
+
+# Внутренние материалы и заметки — не для публичного репозитория
+AGENTS.md
+docs/REA_EVIDENCE.md
+docs/RECOMMENDATIONS.md
+docs/rea/

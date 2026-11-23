@@ -270,14 +270,14 @@ def build_parser() -> argparse.ArgumentParser:
                       help='не сравнивать с прошлым сканом')
     scan.set_defaults(func=_scan)
 
-    analyze = sub.add_parser('analyze', help='разобрать отчёты и создать fixlist')
-    analyze.add_argument('frst', help='путь к отчёту RUSecurity или FRST.txt')
+    analyze = sub.add_parser('analyze', help='разобрать отчёты и создать список исправлений')
+    analyze.add_argument('frst', help='путь к отчёту RUSecurity')
     analyze.add_argument('addition', nargs='?', help='путь к дополнительному отчёту')
     analyze.add_argument('-o', '--output', help=f'куда сохранить {names.FIXLIST}')
     analyze.set_defaults(func=_analyze)
 
-    apply = sub.add_parser('apply', help='выполнить fixlist без FRST (нужны права админа)')
-    apply.add_argument('fixlist', help='путь к fixlist')
+    apply = sub.add_parser('apply', help='выполнить список исправлений (нужны права админа)')
+    apply.add_argument('fixlist', metavar='FILE', help='путь к файлу исправлений')
     apply.add_argument('--dry-run', action='store_true', help='только показать план')
     apply.add_argument('--yes', action='store_true', help='без подтверждения')
     apply.add_argument('--reboot', action='store_true', help='перезагрузить по завершении')

@@ -1,3 +1,3 @@
-"""FRST Studio — сканер и анализатор отчётов в формате Farbar Recovery Scan Tool."""
+"""RUSecurity — портативный сканер и анализатор состояния Windows."""
 
 __version__ = '1.0.0'
