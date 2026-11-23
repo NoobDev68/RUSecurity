@@ -25,8 +25,9 @@ _TRANSLATIONS: Dict[str, str] = {
     'портативная': 'portable',
     'Сменить язык интерфейса': 'Switch interface language',
     'Язык': 'Language',
-    'Язык интерфейса изменён. Перезапустите RUSecurity, чтобы применить.':
-        'Interface language changed. Restart RUSecurity to apply.',
+    'Язык интерфейса: {name}': 'Interface language: {name}',
+    'Дождитесь завершения текущей операции.':
+        'Wait for the current operation to finish.',
 
     # --- экран сканирования ----------------------------------------------
     'Отметьте разделы и нажмите «Сканировать». Найденные элементы можно '

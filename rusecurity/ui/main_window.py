@@ -15,6 +15,8 @@ from .hardening_page import HardeningPage
 from .pages import LogPage, ScanPage
 from .quarantine_page import QuarantinePage
 
+_NAV_TITLES = ('Сканирование', 'Проверка безопасности', 'Карантин', 'Журнал')
+
 
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
@@ -26,6 +28,16 @@ class MainWindow(QMainWindow):
         if icon_file.is_file():
             self.setWindowIcon(QIcon(str(icon_file)))
 
+        self._build_central(0)
+
+        status = QStatusBar()
+        status.setSizeGripEnabled(False)
+        status.setStyleSheet('QStatusBar { background: #0B0E12; color: #8A93A6; }')
+        self.setStatusBar(status)
+        rights = 'администратор' if self._is_admin() else 'пользователь'
+        self.append_log(f'RUSecurity {__version__} запущен, права: {rights}')
+
+    def _build_central(self, index: int) -> None:
         central = QWidget()
         layout = QHBoxLayout(central)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -38,19 +50,13 @@ class MainWindow(QMainWindow):
         self.scan_page = ScanPage(self.append_log)
         self.hardening_page = HardeningPage(self.append_log)
         self.quarantine_page = QuarantinePage(self.append_log)
-        self.pages.addWidget(self.scan_page)
-        self.pages.addWidget(self.hardening_page)
-        self.pages.addWidget(self.quarantine_page)
-        self.pages.addWidget(self.log_page)
+        for page in (self.scan_page, self.hardening_page,
+                     self.quarantine_page, self.log_page):
+            self.pages.addWidget(page)
         layout.addWidget(self.pages, 1)
         self.setCentralWidget(central)
-
-        status = QStatusBar()
-        status.setSizeGripEnabled(False)
-        status.setStyleSheet('QStatusBar { background: #0B0E12; color: #8A93A6; }')
-        self.setStatusBar(status)
-        rights = 'администратор' if self._is_admin() else 'пользователь'
-        self.append_log(f'RUSecurity {__version__} запущен, права: {rights}')
+        i18n.translate_widgets(central)
+        self.pages_set_index(index)
 
     @staticmethod
     def _is_admin() -> bool:
@@ -77,10 +83,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(logo)
         layout.addSpacing(26)
 
-        self._nav_group = QButtonGroup(self)
+        self._nav_group = QButtonGroup(sidebar)
         self._nav_group.setExclusive(True)
-        for index, title in enumerate(('Сканирование', 'Проверка безопасности',
-                                       'Карантин', 'Журнал')):
+        for index, title in enumerate(_NAV_TITLES):
             button = QPushButton(title)
             button.setObjectName('Nav')
             button.setCheckable(True)
@@ -124,16 +129,37 @@ class MainWindow(QMainWindow):
         layout.addWidget(credits)
         return sidebar
 
+    def pages_busy(self) -> bool:
+        for page in (self.scan_page, self.hardening_page,
+                     self.quarantine_page, self.log_page):
+            for method in ('_running', '_busy'):
+                check = getattr(page, method, None)
+                if callable(check) and check():
+                    return True
+        return False
+
     def _switch_language(self, code: str) -> None:
-        for name, button in self._lang_buttons.items():
-            button.setChecked(name == code)
         if code == i18n.current():
+            self._sync_lang_buttons()
             return
+        if self.pages_busy():
+            QMessageBox.information(
+                self, i18n.tr('Язык'),
+                i18n.tr('Дождитесь завершения текущей операции.'))
+            self._sync_lang_buttons()
+            return
+        index = self.pages.currentIndex()
+        old = self.centralWidget()
         i18n.set_language(code)
-        QMessageBox.information(
-            self, i18n.tr('Язык'),
-            i18n.tr('Язык интерфейса изменён. Перезапустите RUSecurity, '
-                    'чтобы применить.'))
+        self._build_central(index)
+        if old is not None:
+            old.deleteLater()
+        self.append_log(i18n.tr('Язык интерфейса: {name}',
+                                name=i18n.LANGUAGES[code]))
+
+    def _sync_lang_buttons(self) -> None:
+        for language, button in self._lang_buttons.items():
+            button.setChecked(language == i18n.current())
 
     def pages_set_index(self, index: int) -> None:
         self.pages.setCurrentIndex(index)
