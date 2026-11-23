@@ -1,5 +1,6 @@
 # RUSecurity
 
+[![tests](https://github.com/NoobDev68/RUSecurity/actions/workflows/tests.yml/badge.svg)](https://github.com/NoobDev68/RUSecurity/actions/workflows/tests.yml)
 ![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D4?logo=windows&logoColor=white)
 ![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![PySide6](https://img.shields.io/badge/PySide6-6.12-41CD52?logo=qt&logoColor=white)
