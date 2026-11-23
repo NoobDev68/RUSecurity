@@ -152,18 +152,6 @@ cython_debug/
 .vscode/
 .idea/
 
-# FRST
-FRST/FRST.txt
-FRST/Additional.txt
-FRST/Addition.txt
-FRST/fixlog.txt
-FRST/FRST_log.txt
-FRST/FRST_fixlog.txt
-FRST/fixlist.txt
-FRST/FRST64.exe
-FRST/FRST.exe
-FRST/FRST-OlderVersion/
-FRST/fixlist_*.txt
 .dsh-cost/
 
 # Rusecurity Scan (портативные данные и рантайм)
@@ -188,9 +176,6 @@ RUSecurity-error.log
 .ui/
 
 # Корпус отчётов и сторонние бинарники — в репозиторий не входят
-Parse_FRST_SafeZone/
-Parse_FRST_VirusInfo/
-FRST/
 Gemini_*.jpeg
 
 # Локальные настройки и отчёты
