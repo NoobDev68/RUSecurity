@@ -115,7 +115,7 @@ def main():
                     entry['has_caution'],
                     entry['has_no_file'],
                     entry['has_unsigned'],
-                    entry['has_missing_driver'],
+                    entry['has_x_marker'],
                     entry['is_mountpoints2'],
                     entry['is_alternate_stream'],
                     entry['is_group_policy'],

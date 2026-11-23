@@ -164,3 +164,35 @@ FRST/FRST64.exe
 FRST/FRST.exe
 FRST/FRST-OlderVersion/
 FRST/fixlist_*.txt
+.dsh-cost/
+
+# Rusecurity Scan (портативные данные и рантайм)
+.runtime/
+.wheels/
+.tmp/
+Reports/
+_scan_out/
+rusecurity.json
+
+# RUSecurity exe build
+dist/
+build/
+build_test/
+build_dbg/
+dist_test/
+frozen_scan*/
+RUSecurity-output.log
+RUSecurity-error.log
+
+# RUSecurity UI assets
+.ui/
+
+# Корпус отчётов и сторонние бинарники — в репозиторий не входят
+Parse_FRST_SafeZone/
+Parse_FRST_VirusInfo/
+FRST/
+Gemini_*.jpeg
+
+# Локальные настройки и отчёты
+Reports/
+rusecurity.json
