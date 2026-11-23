@@ -202,3 +202,11 @@ AGENTS.md
 docs/REA_EVIDENCE.md
 docs/RECOMMENDATIONS.md
 docs/rea/
+
+# Служебные скрипты разработки — не для публичного репозитория
+setup_environment.bat
+Запустить GenFix.bat
+Тестовый мусор RUSecurity.bat
+Откатить тестовый мусор RUSecurity.bat
+extract_rules.py
+rules.json
