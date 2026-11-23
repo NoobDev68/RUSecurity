@@ -220,16 +220,6 @@ _CERT_QUERY_FORMAT_FLAG_BINARY = 2
 _CERT_NAME_SIMPLE_DISPLAY_TYPE = 4
 
 
-class _CERT_CONTEXT(ctypes.Structure):
-    _fields_ = [
-        ('dwCertEncodingType', wintypes.DWORD),
-        ('pbCertEncoded', ctypes.POINTER(ctypes.c_ubyte)),
-        ('cbCertEncoded', wintypes.DWORD),
-        ('pCertInfo', ctypes.c_void_p),
-        ('hCertStore', wintypes.HANDLE),
-    ]
-
-
 _signature_cache: Dict[Tuple[str, int, int], Tuple[bool, str]] = {}
 
 

@@ -6,7 +6,7 @@ import os
 import re
 import subprocess
 import winreg
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 from ..core import winapi
 

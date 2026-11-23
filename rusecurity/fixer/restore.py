@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -309,13 +308,3 @@ def resolve_entries(target: Path, ids: List[int]) -> List[QuarantineEntry]:
         wanted = set(ids)
         entries = [entry for entry in entries if entry.item_id in wanted]
     return entries
-
-
-def cleanup_empty_backups(reports_dir: Path) -> None:
-    """Удалить пустые каталоги бэкапов после полного восстановления."""
-    for backup in Path(reports_dir).glob('Backups/*'):
-        try:
-            if backup.is_dir() and not any(backup.iterdir()):
-                os.rmdir(backup)
-        except OSError:
-            continue

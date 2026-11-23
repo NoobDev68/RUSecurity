@@ -6,9 +6,8 @@ import ctypes
 import os
 import time
 from ctypes import wintypes
-from typing import Iterator, List, Optional, Tuple
+from typing import Iterator, List, Tuple
 
-from .. import winapi
 from ..context import ScanContext
 
 _MAX_FILES = 25000

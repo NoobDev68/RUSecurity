@@ -9,122 +9,28 @@
 подозрительные записи и собирает список исправлений.
 """
 
-import argparse
 import ipaddress
 import logging
 import os
 import re
-import shutil
-import subprocess
-import sys
-import time
 from collections import Counter
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
 from report_parser import (
-    detect_encoding, normalize_line, parse_addition, parse_report,
+    normalize_line, parse_addition, parse_report,
 )
 
 # ---------------------------------------------------------------------------
 # Paths / metadata
 # ---------------------------------------------------------------------------
 __version__ = '3.0.0'
-IS_WINDOWS = os.name == 'nt'
-RULES_PATH = Path(__file__).parent / 'rules.json'
 CONFIG_PATH = Path(__file__).parent / 'detection_config.json'
-SCRIPT_DIR = Path(__file__).parent
 
 # ---------------------------------------------------------------------------
-# Logging / console
+# Logging
 # ---------------------------------------------------------------------------
 log = logging.getLogger('generate_fixlist')
-_USE_COLOR = False
-
-
-def _ensure_truetype_font(kernel32, handle) -> None:
-    """В conhost после chcp может включиться растровый Terminal.
-
-    Растровый шрифт не умеет кириллицу в UTF-8, поэтому меню выглядит мусором.
-    Если текущий шрифт не TrueType — переключаемся на Consolas.
-    """
-    import ctypes
-    from ctypes import wintypes
-
-    class CONSOLE_FONT_INFOEX(ctypes.Structure):
-        _fields_ = [
-            ('cbSize', wintypes.ULONG),
-            ('nFont', wintypes.DWORD),
-            ('dwFontSizeX', wintypes.SHORT),
-            ('dwFontSizeY', wintypes.SHORT),
-            ('FontFamily', wintypes.UINT),
-            ('FontWeight', wintypes.UINT),
-            ('FaceName', wintypes.WCHAR * 32),
-        ]
-
-    try:
-        kernel32.GetCurrentConsoleFontEx.argtypes = [
-            wintypes.HANDLE, wintypes.BOOL, ctypes.POINTER(CONSOLE_FONT_INFOEX)]
-        kernel32.GetCurrentConsoleFontEx.restype = wintypes.BOOL
-        kernel32.SetCurrentConsoleFontEx.argtypes = [
-            wintypes.HANDLE, wintypes.BOOL, ctypes.POINTER(CONSOLE_FONT_INFOEX)]
-        kernel32.SetCurrentConsoleFontEx.restype = wintypes.BOOL
-
-        info = CONSOLE_FONT_INFOEX()
-        info.cbSize = ctypes.sizeof(info)
-        if not kernel32.GetCurrentConsoleFontEx(handle, False, ctypes.byref(info)):
-            return
-        if info.FontFamily & 0x0004:  # TMPF_TRUETYPE
-            return
-
-        info.FontFamily = 0x36
-        info.FontWeight = 400
-        info.dwFontSizeX = 0
-        info.dwFontSizeY = 16
-        for face in ('Consolas', 'Lucida Console'):
-            info.FaceName = face
-            if kernel32.SetCurrentConsoleFontEx(handle, False, ctypes.byref(info)):
-                return
-    except Exception:
-        return
-
-
-def _init_console() -> None:
-    """Настроить UTF-8 и ANSI-цвета в консоли Windows."""
-    global _USE_COLOR
-    _USE_COLOR = False
-    if IS_WINDOWS:
-        try:
-            import ctypes
-            from ctypes import wintypes
-            kernel32 = ctypes.windll.kernel32
-            kernel32.GetStdHandle.argtypes = [wintypes.DWORD]
-            kernel32.GetStdHandle.restype = wintypes.HANDLE
-            kernel32.SetConsoleOutputCP(65001)
-            kernel32.SetConsoleCP(65001)
-            handle = kernel32.GetStdHandle(-11)
-            mode = ctypes.c_uint32()
-            if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
-                if kernel32.SetConsoleMode(handle, mode.value | 0x0004):
-                    _USE_COLOR = bool(sys.stdout.isatty())
-            _ensure_truetype_font(kernel32, handle)
-        except Exception:
-            _USE_COLOR = False
-    for stream in (sys.stdout, sys.stderr):
-        try:
-            stream.reconfigure(encoding='utf-8', errors='replace')
-        except (AttributeError, OSError, ValueError):
-            pass
-
-
-def setup_logging(verbose: bool = False) -> None:
-    # Логи пишем в stderr, чтобы `python GenFix.py rusecurity-report.txt` (вывод списка в
-    # stdout) можно было перенаправить в файл без примесей служебных строк.
-    level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(
-        level=level, format='%(levelname)-7s %(message)s',
-        stream=sys.stderr, force=True,
-    )
 
 
 # ===================================================================
@@ -607,11 +513,6 @@ def is_suspicious_hosts_line(line: str) -> bool:
     )
 
 
-# Совместимость со старым именем в остальном коде.
-def _hosts_entry_is_suspicious(norm: str) -> bool:
-    return is_suspicious_hosts_line(norm)
-
-
 def check_firewall_rule(entry: dict) -> bool:
     if not entry.get('is_firewall_rule'):
         return False
@@ -781,22 +682,6 @@ def extract_msi_from_task(original: str) -> List[str]:
     if ms2:
         return [m for m in ms2 if '..\\' not in m and len(m) > 10]
     return []
-
-
-def convert_registry_entry(entry: dict, norm: str, guid_match: Optional[re.Match]) -> Optional[str]:
-    """Convert a registry entry with GUID to a proper fix command."""
-    if not guid_match:
-        return None
-
-    guid = guid_match.group(0).strip('{}')
-    is_x32 = '-x32' in norm.lower() or 'wow6432node' in norm.lower()
-
-    if is_x32:
-        reg_path = f"HKLM\\Wow6432Node\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Approved\\{guid}"
-    else:
-        reg_path = f"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Approved\\{guid}"
-
-    return f"Reg: {reg_path},{guid}"
 
 
 # ===================================================================
@@ -1419,244 +1304,6 @@ def _resolve_addition_path(report_path: str) -> str:
         if os.path.exists(path):
             return path
     return candidates[0] if candidates else ''
-
-
-# ===================================================================
-# Third-party AV detection
-# ===================================================================
-
-_av_cache = None
-
-
-def _powershell_path() -> str:
-    return shutil.which('powershell') or 'powershell.exe'
-
-
-def check_third_party_av() -> bool:
-    global _av_cache
-    if _av_cache is not None:
-        return _av_cache
-    if not IS_WINDOWS:
-        _av_cache = False
-        return _av_cache
-    try:
-        result = subprocess.run(
-            [_powershell_path(), '-NoProfile', '-Command',
-             '[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; '
-             'Get-CimInstance -Namespace root/SecurityCenter2 -ClassName AntiVirusProduct | '
-             'Where-Object { $_.displayName -notlike "*Windows Defender*" } | '
-             'Select-Object -ExpandProperty displayName'],
-            capture_output=True, text=True, encoding='utf-8', errors='replace',
-            timeout=15, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
-        )
-        _names = [n.strip() for n in result.stdout.split('\n') if n.strip()]
-        third_party = [
-            name for name in _names
-            if 'defender' not in name.lower() and 'защитник' not in name.lower()
-        ]
-        if third_party:
-            log.info('Обнаружен сторонний Антивирус: %s', ', '.join(third_party))
-        _av_cache = bool(third_party)
-    except (subprocess.TimeoutExpired, OSError) as exc:
-        log.warning('Не удалось проверить Антивирус: %s', exc)
-        _av_cache = False
-    return _av_cache
-
-
-# ===================================================================
-# Display helpers
-# ===================================================================
-
-HEADER_LINES = ('Start::', 'CloseProcesses:', 'SystemRestore: On', 'CreateRestorePoint:')
-FOOTER_LINES = ('EmptyTemp:', 'Reboot:', 'End::')
-NON_ACTION_PREFIXES = ('startbatch:', 'endbatch:', 'del ', '"%userprofile%', 'hosts:')
-_HEADER_LOWER = {line.lower() for line in HEADER_LINES}
-_FOOTER_LOWER = {line.lower() for line in FOOTER_LINES}
-_PRE_BODY_LOWER = {line.lower() for line in HEADER_LINES[:3]}
-
-
-def is_action_line(line: str) -> bool:
-    """Строка, которая является исправлением и получает номер при выводе."""
-    s = line.strip()
-    low = s.lower()
-    if not s or low == 'код:' or s.startswith(';'):
-        return False
-    if low in _HEADER_LOWER or low in _FOOTER_LOWER:
-        return False
-    if low.startswith('exportkey:'):
-        return False
-    return not low.startswith(NON_ACTION_PREFIXES)
-
-
-def highlight_fixlist(text: str, show_numbers: bool = False) -> str:
-    if _USE_COLOR:
-        B, M, R, G, Y, C, N = '\033[1m', '\033[95m', '\033[31m', '\033[32m', '\033[33m', '\033[36m', '\033[0m'
-    else:
-        B = M = R = G = Y = C = N = ''
-
-    header, body, footer = parse_fixlist_content(text)
-    out: List[str] = []
-    for line in header:
-        s = line.strip()
-        if not s:
-            continue
-        if s == 'Код:' or s.startswith(';'):
-            out.append(f'{C}{line}{N}')
-        elif s in HEADER_LINES:
-            out.append(f'{B}{G}{line}{N}')
-        else:
-            out.append(line)
-
-    entry_num = 0
-    for line in body:
-        s = line.strip()
-        if not s:
-            continue
-        if s.startswith(';'):
-            out.append(line)
-            out.append('')
-            continue
-        if not is_action_line(line):
-            out.append(line)
-            continue
-        entry_num += 1
-        prefix = f'{B}{M}{entry_num:2d}){N} ' if show_numbers else ''
-        if 'ВНИМАНИЕ' in line or 'ATTENTION' in line.upper():
-            out.append(f'{B}{R}{prefix}{line}{N}')
-        elif 'Нет файла' in line or 'No File' in line or '[X]' in line:
-            out.append(f'{Y}{prefix}{line}{N}')
-        elif line.lstrip().startswith('C:\\'):
-            out.append(f'{B}{prefix}{line}{N}')
-        else:
-            out.append(f'{prefix}{line}')
-        out.append('')
-
-    for line in footer:
-        s = line.strip()
-        if not s:
-            continue
-        if s.startswith('ExportKey:'):
-            out.append(f'{C}{line}{N}')
-        elif s in FOOTER_LINES:
-            out.append(f'{G}{line}{N}')
-        else:
-            out.append(line)
-
-    while out and not out[-1].strip():
-        out.pop()
-    return '\n'.join(out)
-
-
-def display_fixlist(output_path: Path) -> None:
-    with open(output_path, 'r', encoding='utf-8') as f:
-        content = f.read()
-    if _USE_COLOR:
-        C, B, N = '\033[36m', '\033[1m', '\033[0m'
-    else:
-        C = B = N = ''
-    os.system('cls' if os.name == 'nt' else 'clear')
-    print(f"{C}{'=' * 20}{N}")
-    print(f'{B}{C}FIXLIST{N}')
-    print(f"{C}{'=' * 20}{N}")
-    try:
-        print(highlight_fixlist(content, show_numbers=True))
-    except UnicodeEncodeError:
-        safe = content.encode('cp1251', errors='replace').decode('cp1251')
-        print(highlight_fixlist(safe, show_numbers=True))
-    print(f"{C}{'=' * 20}{N}")
-
-
-# ===================================================================
-# FixList parsing for interactive selection
-# ===================================================================
-
-def parse_fixlist_content(content: str):
-    """Разделить fixlist на шапку, тело и хвост.
-
-    Тело — всё между CreateRestorePoint: и ExportKey: (или до конца файла).
-    """
-    header, body, footer, state = [], [], [], 'header'
-    for line in content.split('\n'):
-        stripped = line.strip()
-        low = stripped.lower()
-        if state == 'header':
-            header.append(line)
-            if low == 'createrestorepoint:':
-                state = 'body'
-            elif stripped and low != 'код:' and low not in _PRE_BODY_LOWER:
-                # fixlist без CreateRestorePoint: первая значимая строка — уже тело
-                header.pop()
-                body.append(line)
-                state = 'body'
-        elif state == 'body':
-            if low.startswith('exportkey:'):
-                footer.append(line)
-                state = 'footer'
-            else:
-                body.append(line)
-        else:
-            footer.append(line)
-    return header, body, footer
-
-
-def _parse_selection(numbers_input: str) -> Set[int]:
-    keep: Set[int] = set()
-    for part in re.split(r'[,\s]+', numbers_input.strip()):
-        if not part:
-            continue
-        if '-' in part:
-            try:
-                start, end = part.split('-', 1)
-                keep.update(range(int(start), int(end) + 1))
-            except ValueError:
-                continue
-        else:
-            try:
-                keep.add(int(part))
-            except ValueError:
-                continue
-    return keep
-
-
-def filter_fixlist_by_numbers(content: str, numbers_input: str) -> str:
-    header, body, footer = parse_fixlist_content(content)
-    action_indices = [i for i, line in enumerate(body) if is_action_line(line)]
-    if not action_indices:
-        return content
-
-    keep = _parse_selection(numbers_input)
-    if not keep:
-        return content
-
-    kept_indices = {
-        index for number, index in enumerate(action_indices, 1) if number in keep
-    }
-    if not kept_indices:
-        return '\n'.join(header + footer).rstrip('\n') + '\n'
-
-    out: List[str] = []
-    for index, line in enumerate(body):
-        stripped = line.strip()
-        if not stripped:
-            continue
-        if is_action_line(line):
-            if index in kept_indices:
-                out.append(line)
-            continue
-        if stripped.startswith(';'):
-            next_index = next(
-                (j for j in range(index + 1, len(body))
-                 if is_action_line(body[j]) or body[j].strip().startswith(';')),
-                None,
-            )
-            if next_index is not None and next_index in kept_indices:
-                out.append(line)
-            continue
-        # пакетный блок, Hosts: и прочие служебные строки оставляем всегда
-        out.append(line)
-
-    result = '\n'.join(header + out + footer).rstrip('\n') + '\n'
-    return result
 
 
 # ===================================================================

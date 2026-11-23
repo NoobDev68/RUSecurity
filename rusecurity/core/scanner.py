@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
@@ -11,7 +11,6 @@ from typing import Callable, List, Optional, Tuple
 from .. import names
 from . import sysinfo
 from .context import ScanContext
-from . import delta
 from .model import Report
 from .sections import (addition, ads, association, bcd, events, internet, registry,
                        sigcheck, system)
@@ -90,9 +89,6 @@ class ScanResult:
     addition: Optional[Path]
     entries: int
     addition_entries: int = 0
-    new_entries: List[str] = field(default_factory=list)
-    gone_entries: List[str] = field(default_factory=list)
-    history_available: bool = False
 
 
 def _date() -> str:
@@ -204,7 +200,6 @@ def build_addition(ctx: ScanContext, launcher: str,
 
 def scan(output_dir: Path, include_addition: bool = True,
          progress: Optional[Callable[[str], None]] = None,
-         history: bool = True,
          options: Optional[ScanOptions] = None) -> ScanResult:
     options = options or ScanOptions()
     if not include_addition:
@@ -230,20 +225,5 @@ def scan(output_dir: Path, include_addition: bool = True,
             except OSError:
                 pass
     entries = sum(len(section.lines) for section in report.sections)
-
-    new_entries: List[str] = []
-    gone_entries: List[str] = []
-    previous = None
-    if history:
-        previous = delta.load_last(output_dir)
-        current = delta.entries_from_text(report_path.read_text(encoding='utf-8'))
-        if addition_path is not None:
-            current.update(delta.entries_from_text(
-                addition_path.read_text(encoding='utf-8')))
-        if previous:
-            new_entries, gone_entries = delta.compare(previous, current)
-        delta.save(output_dir, current)
     return ScanResult(report=report_path, addition=addition_path, entries=entries,
-                      addition_entries=addition_entries,
-                      new_entries=new_entries, gone_entries=gone_entries,
-                      history_available=bool(previous))
+                      addition_entries=addition_entries)

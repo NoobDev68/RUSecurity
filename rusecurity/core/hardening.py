@@ -18,7 +18,7 @@ SmartScreen и отключение Defender уже разбираются по 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Tuple
 
 from . import winapi
 

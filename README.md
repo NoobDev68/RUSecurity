@@ -80,9 +80,12 @@ python -m rusecurity restore Reports\Backups\<дата>
 python -m pip install -r requirements-dev.txt
 python -m PyInstaller --noconfirm --clean --onefile --windowed --uac-admin `
   --runtime-tmpdir . --paths .runtime --name RUSecurity `
-  --icon assets\RUSecurity.ico --add-data "assets;assets" `
+  --icon "$PWD\assets\RUSecurity.ico" --add-data "$PWD\assets;assets" `
   --distpath dist --workpath build --specpath build RUSecurity.py
 ```
+
+Путь к ассетам абсолютный: при `--specpath build` относительные пути
+`--add-data` считаются от каталога spec, а не от корня проекта.
 
 `--add-data` кладёт логотип и иконку окна внутрь exe; без него в сайдбаре
 останется текстовая надпись вместо логотипа.
@@ -119,7 +122,6 @@ python -m pytest tests -v
   - `core/winapi.py` — реестр, подпись и версия файла, ярлыки, процессы;
   - `core/sections/` — сбор данных по разделам;
   - `core/scanner.py` — сборка отчёта;
-  - `core/delta.py` — история сканов и сравнение «что изменилось»;
   - `core/hardening.py` — правила проверки безопасности;
   - `analyzer.py` — анализ и список исправлений;
   - `fixer/` — выполнение исправлений, бэкапы, карантин, откат, правка

@@ -20,20 +20,11 @@ def _scan(args: argparse.Namespace) -> int:
     output = Path(args.output) if args.output else config.reports_dir(settings)
     print(f'Сканирование в {output} ...', flush=True)
     result = scanner.scan(output, include_addition=not args.no_addition,
-                          progress=lambda message: print(f'  {message}', flush=True),
-                          history=not args.no_history)
+                          progress=lambda message: print(f'  {message}', flush=True))
     print(f'Готово: {result.report}')
     if result.addition:
         print(f'       {result.addition}')
     print(f'Записей в отчёте: {result.entries}')
-    if result.history_available:
-        print(f'С прошлого скана: новых {len(result.new_entries)}, '
-              f'исчезло {len(result.gone_entries)}')
-        if args.delta:
-            for line in result.new_entries[:30]:
-                print(f'  + {line[:160]}')
-            for line in result.gone_entries[:30]:
-                print(f'  - {line[:160]}')
     if args.summary:
         Path(args.summary).write_text(json.dumps({
             'report': str(result.report),
@@ -264,10 +255,6 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument('-o', '--output', help='каталог для отчётов')
     scan.add_argument('--no-addition', action='store_true', help='не создавать дополнительный отчёт')
     scan.add_argument('--summary', help='записать итог сканирования в JSON')
-    scan.add_argument('--delta', action='store_true',
-                      help='показать новые и исчезнувшие записи')
-    scan.add_argument('--no-history', action='store_true',
-                      help='не сравнивать с прошлым сканом')
     scan.set_defaults(func=_scan)
 
     analyze = sub.add_parser('analyze', help='разобрать отчёты и создать список исправлений')
