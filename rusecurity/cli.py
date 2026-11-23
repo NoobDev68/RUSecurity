@@ -45,9 +45,9 @@ def _scan(args: argparse.Namespace) -> int:
 
 def _analyze(args: argparse.Namespace) -> int:
     from . import analyzer
-    frst = Path(args.frst)
-    addition = Path(args.addition) if args.addition else analyzer.resolve_addition(frst)
-    result = analyzer.analyze(frst, addition)
+    report = Path(args.report)
+    addition = Path(args.addition) if args.addition else analyzer.resolve_addition(report)
+    result = analyzer.analyze(report, addition)
     if not result.text:
         print('Подозрительных записей не найдено — fixlist не нужен.', file=sys.stderr)
         return 0
@@ -271,7 +271,7 @@ def build_parser() -> argparse.ArgumentParser:
     scan.set_defaults(func=_scan)
 
     analyze = sub.add_parser('analyze', help='разобрать отчёты и создать список исправлений')
-    analyze.add_argument('frst', help='путь к отчёту RUSecurity')
+    analyze.add_argument('report', help='путь к отчёту RUSecurity')
     analyze.add_argument('addition', nargs='?', help='путь к дополнительному отчёту')
     analyze.add_argument('-o', '--output', help=f'куда сохранить {names.FIXLIST}')
     analyze.set_defaults(func=_analyze)

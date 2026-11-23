@@ -1,4 +1,4 @@
-"""Сборка отчётов RUSecurity в формате FRST."""
+"""Сборка отчётов RUSecurity."""
 
 from __future__ import annotations
 

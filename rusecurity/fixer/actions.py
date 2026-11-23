@@ -86,7 +86,7 @@ _RE_REG_ADD = re.compile(r'^Reg:\s*reg\s+add\s+"(?P<path>[^"]+)"\s+'
                          r'(?:/f)?\s*$', re.IGNORECASE)
 _RE_RUN_VALUE = re.compile(r'^([A-Za-z0-9_\\ .-]+?):\s*\[([^\]]*)\]')
 
-# Служебные псевдонимы в путях реестра FRST
+# Служебные псевдонимы в путях реестра
 _HIVE_PREFIXES = ('HKLM-x32\\...\\', 'HKLM\\...\\', 'HKU\\', 'HKCU\\...\\', 'HKCR\\')
 
 
@@ -232,7 +232,7 @@ def _parse_line(line: str) -> Action:
 
 
 def _parse_registry_line(line: str) -> Action:
-    """Строка реестра в нотации FRST: путь: [значение] ... или путь: {guid} ..."""
+    """Строка реестра: путь: [значение] ... или путь: {guid} ..."""
     head, _, tail = line.partition(':')
     if not tail:
         return Action(MANUAL, line, manual_reason='не разобрать путь реестра')

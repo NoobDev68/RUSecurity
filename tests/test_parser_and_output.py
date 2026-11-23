@@ -16,9 +16,9 @@ sys.path.insert(0, str(PROJECT_DIR))
 
 class TestParserSections:
     def test_russian_sections(self, tmp_path):
-        from frst_parser import parse_frst_report
+        from report_parser import parse_report
 
-        report = tmp_path / 'FRST.txt'
+        report = tmp_path / 'rusecurity-report.txt'
         report.write_text(
             '==================== Реестр Windows (В белом списке) ===================\n'
             'HKLM\\...\\Run: [Bad] => C:\\bad.exe (Нет файла) <==== ВНИМАНИЕ\n'
@@ -26,7 +26,7 @@ class TestParserSections:
             'Task: {11111111-2222-3333-4444-555555555555} - System32\\Tasks\\Bad\n',
             encoding='utf-8',
         )
-        parsed = parse_frst_report(str(report))
+        parsed = parse_report(str(report))
         assert 'registry' in parsed['sections']
         assert 'tasks' in parsed['sections']
         run_entry = next(e for e in parsed['entries'] if e['is_run_key'])
@@ -35,9 +35,9 @@ class TestParserSections:
         assert run_entry['has_no_file'] is True
 
     def test_english_sections_and_flags(self, tmp_path):
-        from frst_parser import parse_frst_report
+        from report_parser import parse_report
 
-        report = tmp_path / 'FRST.txt'
+        report = tmp_path / 'rusecurity-report.txt'
         report.write_text(
             '==================== Registry (Whitelisted) ===================\n'
             'HKLM\\...\\Run: [Bad] => C:\\bad.exe (No File) <==== ATTENTION '
@@ -46,7 +46,7 @@ class TestParserSections:
             'S2 BadService; C:\\bad.sys [X]\n',
             encoding='utf-8',
         )
-        parsed = parse_frst_report(str(report))
+        parsed = parse_report(str(report))
         run_entry = next(e for e in parsed['entries'] if e['is_run_key'])
         assert run_entry['has_caution'] is True
         assert run_entry['has_no_file'] is True
@@ -55,22 +55,22 @@ class TestParserSections:
         assert service['has_x_marker'] is True
 
     def test_runonce_is_run_key(self, tmp_path):
-        from frst_parser import parse_frst_report
+        from report_parser import parse_report
 
-        report = tmp_path / 'FRST.txt'
+        report = tmp_path / 'rusecurity-report.txt'
         report.write_text(
             '==================== Реестр Windows ===================\n'
             'HKLM\\...\\RunOnce: [Bad] => C:\\bad.exe (Нет файла)\n',
             encoding='utf-8',
         )
-        parsed = parse_frst_report(str(report))
+        parsed = parse_report(str(report))
         entry = next(e for e in parsed['entries'] if 'RunOnce' in e['normalized'])
         assert entry['is_run_key'] is True
 
     def test_no_file_arrow_marker(self, tmp_path):
-        from frst_parser import parse_frst_report
+        from report_parser import parse_report
 
-        report = tmp_path / 'FRST.txt'
+        report = tmp_path / 'rusecurity-report.txt'
         report.write_text(
             '==================== Запланированные задачи ===================\n'
             'Task: {11111111-2222-3333-4444-555555555555} - System32\\Tasks\\Bad -> Нет файла\n'
@@ -78,14 +78,14 @@ class TestParserSections:
             'Edge HomePage: Default -> https://example.com (No File)\n',
             encoding='utf-8',
         )
-        parsed = parse_frst_report(str(report))
+        parsed = parse_report(str(report))
         task = next(e for e in parsed['entries'] if e['is_task_entry'])
         assert task['has_no_file'] is True
         homepage = next(e for e in parsed['entries'] if e['is_browser_homepage'])
         assert homepage['has_no_file'] is True
 
     def test_additional_sections_bilingual(self, tmp_path):
-        from frst_parser import parse_additional_report
+        from report_parser import parse_addition
 
         ru = tmp_path / 'Addition_ru.txt'
         ru.write_text(
@@ -100,13 +100,13 @@ class TestParserSections:
             encoding='utf-8',
         )
         for path in (ru, en):
-            parsed = parse_additional_report(str(path))
+            parsed = parse_addition(str(path))
             assert 'firewall_rules' in parsed['sections']
             entry = next(e for e in parsed['entries'] if e['is_firewall_rule'])
             assert 'FirewallRules:' in entry['normalized']
 
     def test_parse_fixlist_skips_bom_and_kod(self, tmp_path):
-        from frst_parser import parse_fixlist
+        from report_parser import parse_fixlist
 
         fixlist = tmp_path / 'fixlist.txt'
         fixlist.write_bytes(
@@ -118,7 +118,7 @@ class TestParserSections:
         assert any('Bad' in a for a in actions)
 
     def test_parse_fixlist_utf16(self, tmp_path):
-        from frst_parser import is_boilerplate_action, parse_fixlist
+        from report_parser import is_boilerplate_action, parse_fixlist
 
         fixlist = tmp_path / 'fixlist.txt'
         fixlist.write_bytes(
@@ -133,19 +133,19 @@ class TestParserSections:
 
 class TestEncodingDetection:
     def test_utf8_sig(self, tmp_path):
-        from frst_parser import detect_encoding
+        from report_parser import detect_encoding
         path = tmp_path / 'a.txt'
         path.write_bytes(b'\xef\xbb\xbfhello')
         assert detect_encoding(path) == 'utf-8-sig'
 
     def test_utf16(self, tmp_path):
-        from frst_parser import detect_encoding
+        from report_parser import detect_encoding
         path = tmp_path / 'a.txt'
         path.write_bytes('привет'.encode('utf-16'))
         assert detect_encoding(path) == 'utf-16'
 
     def test_cp1251(self, tmp_path):
-        from frst_parser import detect_encoding
+        from report_parser import detect_encoding
         path = tmp_path / 'a.txt'
         path.write_bytes('привет'.encode('cp1251'))
         assert detect_encoding(path) == 'cp1251'
@@ -153,14 +153,14 @@ class TestEncodingDetection:
     def test_cp1251_report_is_converted_to_utf8_fixlist(self, tmp_path):
         import GenFix
 
-        frst = tmp_path / 'FRST.txt'
-        frst.write_bytes((
+        report = tmp_path / 'rusecurity-report.txt'
+        report.write_bytes((
             '==================== Реестр Windows ===================\n'
             'Task: Bad => C:\\Users\\Иван\\bad.exe (Нет файла) <==== ВНИМАНИЕ\n'
         ).encode('cp1251'))
         output = tmp_path / 'fixlist.txt'
         result = GenFix.generate_fixlist(
-            str(frst), output_path=str(output),
+            str(report), output_path=str(output),
         )
         assert 'Иван' in result
         assert 'Иван' in output.read_text(encoding='utf-8')
@@ -170,16 +170,16 @@ class TestEncodingDetection:
 # fixlist format / generation
 # ===================================================================
 
-def _generate(tmp_path, frst_text, addition_text=None, **kwargs):
+def _generate(tmp_path, report_text, addition_text=None, **kwargs):
     import GenFix
 
-    frst = tmp_path / 'FRST.txt'
-    frst.write_text(frst_text, encoding='utf-8')
+    report = tmp_path / 'rusecurity-report.txt'
+    report.write_text(report_text, encoding='utf-8')
     if addition_text is not None:
-        (tmp_path / 'Addition.txt').write_text(addition_text, encoding='utf-8')
+        (tmp_path / 'rusecurity-add.txt').write_text(addition_text, encoding='utf-8')
     output = tmp_path / 'fixlist.txt'
     result = GenFix.generate_fixlist(
-        str(frst), output_path=str(output), **kwargs
+        str(report), output_path=str(output), **kwargs
     )
     return result, output
 
@@ -439,7 +439,7 @@ class TestFixlistFormat:
         assert 'Hosts: C:' not in hijack
 
     def test_hosts_reset_for_raw_addition_section(self, tmp_path):
-        frst = '==== Процессы ====\nSystem Idle Process (0)\n'
+        report = '==== Процессы ====\nSystem Idle Process (0)\n'
         addition = (
             '==================== Hosts содержимое: =========================\n'
             '2026-01-01 10:00 - 2026-01-01 10:00 - 00000810 _____ '
@@ -447,14 +447,14 @@ class TestFixlistFormat:
             '127.0.0.1 localhost\n'
             '0.0.0.0 ads.example.com\n'
             '127.0.0.1 update.microsoft.com\n')
-        hijack, _ = _generate(tmp_path, frst, addition_text=addition)
+        hijack, _ = _generate(tmp_path, report, addition_text=addition)
         assert '\nHosts:\n' in hijack
 
         safe_addition = (
             '==================== Hosts содержимое: =========================\n'
             '127.0.0.1 localhost\n'
             '0.0.0.0 ads.example.com\n')
-        safe, _ = _generate(tmp_path, frst, addition_text=safe_addition)
+        safe, _ = _generate(tmp_path, report, addition_text=safe_addition)
         assert 'Hosts:' not in safe
 
     def test_suspicious_hosts_lines(self):
@@ -517,7 +517,7 @@ SAMPLE_FIXLIST = (
 class TestSelection:
     def test_batch_directives_case_insensitive(self):
         import GenFix
-        from frst_parser import is_boilerplate_action
+        from report_parser import is_boilerplate_action
 
         assert not GenFix.is_action_line('startbatch:')
         assert not GenFix.is_action_line('ENDBATCH:')
@@ -575,166 +575,6 @@ class TestSelection:
 # Misc helpers
 # ===================================================================
 
-class TestReadLastLine:
-    def test_with_trailing_newline(self, tmp_path):
-        from GenFix import _read_last_line
-        path = tmp_path / 'a.txt'
-        path.write_text('line1\nline2\n', encoding='utf-8')
-        assert _read_last_line(path) == 'line2'
-
-    def test_without_trailing_newline(self, tmp_path):
-        from GenFix import _read_last_line
-        path = tmp_path / 'a.txt'
-        path.write_text('line1\nline2', encoding='utf-8')
-        assert _read_last_line(path) == 'line2'
-
-
-class TestWaitForReport:
-    def test_finishes_on_end_marker(self, tmp_path, monkeypatch):
-        import GenFix
-
-        path = tmp_path / 'FRST.txt'
-        path.write_text('Scan result\n==================== End of FRST.txt ====================\n',
-                        encoding='utf-8')
-        monkeypatch.setattr(GenFix.time, 'sleep', lambda _seconds: None)
-        assert GenFix.wait_for_report(path, 'FRST.txt', timeout=30)
-
-    def test_header_separator_is_not_completion(self, tmp_path, monkeypatch):
-        import GenFix
-
-        path = tmp_path / 'FRST.txt'
-        path.write_text('Scan result\n==================== Процессы =================\n',
-                        encoding='utf-8')
-        monkeypatch.setattr(GenFix.time, 'sleep', lambda _seconds: None)
-        assert not GenFix.wait_for_report(path, 'FRST.txt', timeout=20)
-
-    def test_partial_file_is_not_accepted_on_timeout(self, tmp_path, monkeypatch):
-        import GenFix
-
-        path = tmp_path / 'FRST.txt'
-        path.write_text('x' * 5000 + '\n==================== Процессы =================\n',
-                        encoding='utf-8')
-        monkeypatch.setattr(GenFix.time, 'sleep', lambda _seconds: None)
-        assert not GenFix.wait_for_report(path, 'FRST.txt', timeout=20)
-
-    def test_waits_for_addition_end_marker(self, tmp_path, monkeypatch):
-        import GenFix
-
-        path = tmp_path / 'Addition.txt'
-        path.write_text('Addition\n==================== Процессы =================\n',
-                        encoding='utf-8')
-        monkeypatch.setattr(GenFix.time, 'sleep', lambda _seconds: None)
-        assert not GenFix.wait_for_report(path, 'Addition.txt', timeout=20)
-
-        with open(path, 'a', encoding='utf-8') as f:
-            f.write('==================== Конец  Addition.txt =======================\n')
-        assert GenFix.wait_for_report(path, 'Addition.txt', timeout=30)
-
-    def test_timeout_without_file(self, tmp_path, monkeypatch):
-        import GenFix
-
-        monkeypatch.setattr(GenFix.time, 'sleep', lambda _seconds: None)
-        assert not GenFix.wait_for_report(tmp_path / 'missing.txt', 'FRST.txt', timeout=3)
-
-
-class TestMenuScanWait:
-    def _prepare(self, tmp_path, monkeypatch, events, wait_results):
-        import GenFix
-
-        monkeypatch.setattr(GenFix, 'FRST_DIR', tmp_path)
-        (tmp_path / 'FRST64.exe').write_bytes(b'x')
-        monkeypatch.setattr(GenFix, 'check_third_party_av', lambda: False)
-        monkeypatch.setattr(GenFix, '_run_elevated', lambda *a, **k: True)
-        monkeypatch.setattr('builtins.input', lambda *a, **k: '')
-        monkeypatch.setattr(GenFix.time, 'sleep', lambda _seconds: None)
-
-        def fake_wait(path, label, **kwargs):
-            events.append(f'wait:{label}')
-            if label == 'FRST.txt' and len(wait_results) > 1:
-                (tmp_path / 'Addition.txt').write_text('Addition\n', encoding='utf-8')
-            return wait_results.pop(0)
-
-        monkeypatch.setattr(GenFix, 'wait_for_report', fake_wait)
-        monkeypatch.setattr(GenFix, 'analyse_and_show',
-                            lambda *a, **k: events.append('analyse'))
-        return GenFix
-
-    def test_no_analysis_when_frst_not_finished(self, tmp_path, monkeypatch):
-        events = []
-        GenFix = self._prepare(tmp_path, monkeypatch, events, [False])
-
-        GenFix.menu_scan()
-
-        assert events == ['wait:FRST.txt']
-
-    def test_analysis_starts_only_after_both_reports(self, tmp_path, monkeypatch):
-        events = []
-        GenFix = self._prepare(tmp_path, monkeypatch, events, [True, True])
-
-        GenFix.menu_scan()
-
-        assert events == ['wait:FRST.txt', 'wait:Addition.txt', 'analyse']
-
-
-class TestMenuCleanup:
-    @staticmethod
-    def _input(monkeypatch, answers):
-        answers = list(answers)
-        prompts = []
-
-        def fake(prompt=''):
-            prompts.append(prompt)
-            return answers.pop(0) if answers else ''
-
-        monkeypatch.setattr('builtins.input', fake)
-        return prompts
-
-    def test_empty_folder_reports_nothing_to_delete(self, tmp_path, monkeypatch, capsys):
-        import GenFix
-
-        monkeypatch.setattr(GenFix, 'FRST_DIR', tmp_path)
-        called = []
-        monkeypatch.setattr(GenFix, 'cleanup_frst_files', lambda: called.append(1))
-        prompts = self._input(monkeypatch, [''])
-
-        GenFix.menu_cleanup()
-
-        out = capsys.readouterr().out
-        assert 'пуста' in out
-        assert 'удалять нечего' in out
-        assert not any('Удалить?' in p for p in prompts)
-        assert called == []
-
-    def test_existing_files_cancel(self, tmp_path, monkeypatch, capsys):
-        import GenFix
-
-        monkeypatch.setattr(GenFix, 'FRST_DIR', tmp_path)
-        (tmp_path / 'FRST.txt').write_text('x', encoding='utf-8')
-        called = []
-        monkeypatch.setattr(GenFix, 'cleanup_frst_files', lambda: called.append(1))
-        prompts = self._input(monkeypatch, ['n', ''])
-
-        GenFix.menu_cleanup()
-
-        out = capsys.readouterr().out
-        assert 'FRST.txt' in out
-        assert any('Удалить?' in p for p in prompts)
-        assert called == []
-
-    def test_existing_files_delete(self, tmp_path, monkeypatch):
-        import GenFix
-
-        monkeypatch.setattr(GenFix, 'FRST_DIR', tmp_path)
-        (tmp_path / 'fixlist.txt').write_text('x', encoding='utf-8')
-        called = []
-        monkeypatch.setattr(GenFix, 'cleanup_frst_files', lambda: called.append(1))
-        self._input(monkeypatch, ['y', ''])
-
-        GenFix.menu_cleanup()
-
-        assert called == [1]
-
-
 class TestConfigMerge:
     def test_lists_merged_with_defaults(self, tmp_path):
         import GenFix
@@ -772,26 +612,3 @@ class TestThirdPartyAv:
         monkeypatch.setattr(GenFix.subprocess, 'run',
                             self._fake_run('Защитник Windows\nKaspersky\n'))
         assert GenFix.check_third_party_av() is True
-
-
-@pytest.mark.skipif(os.name != 'nt', reason='ShellExecuteExW доступен только в Windows')
-class TestShellExecute:
-    def test_success(self):
-        from GenFix import _shell_execute
-        assert _shell_execute(
-            sys.executable, '-c "import sys; sys.exit(0)"',
-            wait=True, verb='open', show=0,
-        )
-
-    def test_nonzero_exit(self):
-        from GenFix import _shell_execute
-        assert not _shell_execute(
-            sys.executable, '-c "import sys; sys.exit(3)"',
-            wait=True, verb='open', show=0,
-        )
-
-    def test_missing_file(self):
-        from GenFix import _shell_execute
-        assert not _shell_execute(
-            r'C:\definitely\missing-file.exe', wait=True, verb='open', show=0,
-        )

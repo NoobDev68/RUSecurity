@@ -1,4 +1,4 @@
-"""Секции Addition.txt: программы, брандмауэр, hosts, ярлыки, WMI и прочее."""
+"""Секции rusecurity-add.txt: программы, брандмауэр, hosts, ярлыки, WMI и прочее."""
 
 from __future__ import annotations
 

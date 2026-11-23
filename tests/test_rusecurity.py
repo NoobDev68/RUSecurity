@@ -23,7 +23,7 @@ def test_heading_has_title_and_equals():
 def test_report_writes_crlf_without_bom(tmp_path):
     report = Report(header=['Первая строка', 'Вторая строка', ''])
     report.add('Службы (Все)', ['R2 Test; C:\\x.exe'])
-    target = report.write(tmp_path / 'FRST.txt')
+    target = report.write(tmp_path / 'rusecurity-report.txt')
 
     raw = target.read_bytes()
     assert not raw.startswith(b'\xef\xbb\xbf')
@@ -57,29 +57,29 @@ def test_resolve_command_file_without_quotes(tmp_path):
     assert Path(path) == exe
 
 
-def _write_frst(tmp_path: Path, body: str) -> Path:
-    path = tmp_path / 'FRST.txt'
+def _write_report(tmp_path: Path, body: str) -> Path:
+    path = tmp_path / 'rusecurity-report.txt'
     path.write_text(
         'Результат сканирования\n'
         '==================== Реестр Windows (Все) ==================\n'
         f'{body}\n'
-        '==================== Конец от FRST.txt ==================\n',
+        '==================== Конец от rusecurity-report.txt ==================\n',
         encoding='utf-8')
     return path
 
 
 def test_analyzer_flags_dead_run_entry(tmp_path):
-    frst = _write_frst(tmp_path, r'HKLM\...\Run: [BadApp] => C:\no\file.exe (Нет файла)')
-    result = analyzer.analyze(frst)
+    report = _write_report(tmp_path, r'HKLM\...\Run: [BadApp] => C:\no\file.exe (Нет файла)')
+    result = analyzer.analyze(report)
     assert result.fix_count == 1
     assert 'BadApp' in result.text
     assert 'CreateRestorePoint:' in result.text
 
 
 def test_analyzer_reports_no_findings_for_clean_report(tmp_path):
-    frst = _write_frst(tmp_path, r'HKLM\...\Run: [Good] => C:\Windows\System32\notepad.exe '
+    report = _write_report(tmp_path, r'HKLM\...\Run: [Good] => C:\Windows\System32\notepad.exe '
                                 r'[100 2024-01-01] (Microsoft Corporation)')
-    result = analyzer.analyze(frst)
+    result = analyzer.analyze(report)
     assert result.text == ''
     assert result.fix_count == 0
 
@@ -182,8 +182,8 @@ def test_build_addition_respects_options(monkeypatch):
 def test_analyze_filters_security_center_without_programs(tmp_path):
     from rusecurity.core import scanner
 
-    frst = tmp_path / names.REPORT
-    frst.write_text(
+    report = tmp_path / names.REPORT
+    report.write_text(
         '==================== Реестр Windows (Все) ====================\n'
         r'HKLM\...\Run: [Bad] => C:\no\file.exe (Нет файла)' '\n'
         '==================== Конец отчёта RUSecurity ====================\n',
@@ -195,9 +195,9 @@ def test_analyze_filters_security_center_without_programs(tmp_path):
         '{70E35457-C7D9-669C-FEA5-55382EABDC78}\n'
         '==================== Конец дополнительного отчёта ====================\n',
         encoding='utf-8')
-    plain = analyzer.analyze(frst, addition)
+    plain = analyzer.analyze(report, addition)
     assert 'Центр безопасности' in {item.category for item in plain.findings}
-    filtered = analyzer.analyze(frst, addition,
+    filtered = analyzer.analyze(report, addition,
                                 options=scanner.ScanOptions(programs=False))
     categories = {item.category for item in filtered.findings}
     assert 'Центр безопасности' not in categories
@@ -223,10 +223,10 @@ def test_config_defaults_are_portable():
     assert reports.parent == config.APP_DIR
 
 
-def test_names_differ_from_frst():
-    assert names.REPORT != 'FRST.txt'
-    assert names.ADDITION != 'Addition.txt'
-    assert names.FIXLIST != 'fixlist.txt'
+def test_names_are_own():
+    assert names.REPORT == 'rusecurity-report.txt'
+    assert names.ADDITION == 'rusecurity-add.txt'
+    assert names.FIXLIST == 'rusecurity-fix.txt'
 
 
 def test_resolve_addition_prefers_own_names(tmp_path):
@@ -234,8 +234,8 @@ def test_resolve_addition_prefers_own_names(tmp_path):
     report.write_text('отчёт', encoding='utf-8')
     own = tmp_path / names.ADDITION
     own.write_text('доп', encoding='utf-8')
-    legacy = tmp_path / names.LEGACY_ADDITION
-    legacy.write_text('чужой', encoding='utf-8')
+    legacy = tmp_path / names.LEGACY_RUSECURITY_ADDITION
+    legacy.write_text('старое имя', encoding='utf-8')
     assert analyzer.resolve_addition(report) == own
 
 
@@ -243,13 +243,5 @@ def test_resolve_addition_accepts_old_rusecurity_name(tmp_path):
     report = tmp_path / names.REPORT
     report.write_text('отчёт', encoding='utf-8')
     legacy = tmp_path / names.LEGACY_RUSECURITY_ADDITION
-    legacy.write_text('доп', encoding='utf-8')
-    assert analyzer.resolve_addition(report) == legacy
-
-
-def test_resolve_addition_accepts_frst_names(tmp_path):
-    report = tmp_path / 'FRST.txt'
-    report.write_text('отчёт', encoding='utf-8')
-    legacy = tmp_path / names.LEGACY_ADDITION
     legacy.write_text('доп', encoding='utf-8')
     assert analyzer.resolve_addition(report) == legacy

@@ -426,7 +426,7 @@ def signature_info(path: str) -> Tuple[bool, str]:
 
 
 def publisher_of(path: str) -> Tuple[str, bool]:
-    """(подписант или издатель, подписан ли) — как в скобках отчёта FRST."""
+    """(подписант или издатель, подписан ли) — как в скобках отчёта."""
     if not path or not os.path.isfile(path):
         return '', False
     signed, signer = signature_info(path)

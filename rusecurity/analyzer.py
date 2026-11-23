@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import GenFix
-from frst_parser import is_boilerplate_action
+from report_parser import is_boilerplate_action
 
 from . import names
 from .fixer import actions as act
@@ -78,7 +78,7 @@ class _Collector(logging.Handler):
             self.messages.append(str(record.msg))
 
 
-def analyze(frst_path: Path, addition_path: Optional[Path] = None,
+def analyze(report_path: Path, addition_path: Optional[Path] = None,
             output_path: Optional[Path] = None,
             options: Optional['ScanOptions'] = None) -> AnalysisResult:
     """Разобрать отчёты и вернуть текст fixlist. Пустой текст — автодействий нет."""
@@ -87,7 +87,7 @@ def analyze(frst_path: Path, addition_path: Optional[Path] = None,
     logger.addHandler(collector)
     try:
         text = GenFix.generate_fixlist(
-            str(frst_path),
+            str(report_path),
             additional_path=str(addition_path) if addition_path else None,
             output_path=str(output_path) if output_path else None,
         )
@@ -201,11 +201,11 @@ def save_fixlist(text: str, output_path: Path) -> Path:
 
 
 def resolve_addition(report_path: Path) -> Optional[Path]:
-    """Найти дополнительный отчёт рядом: свои имена, затем имена FRST."""
+    """Найти дополнительный отчёт рядом с основным."""
     for candidate in names.addition_candidates(Path(report_path)):
         if candidate.is_file():
             return candidate
-    resolved = GenFix._resolve_additional_path(str(report_path))
+    resolved = GenFix._resolve_addition_path(str(report_path))
     if resolved and Path(resolved).is_file():
         return Path(resolved)
     return None

@@ -12,7 +12,7 @@ _NEWLINE = '\r\n'
 
 
 def heading(title: str) -> str:
-    """Заголовок секции в стиле FRST: '===== Title ====='."""
+    """Заголовок секции отчёта: '===== Title ====='."""
     base = f'{"=" * 20} {title} '
     return base + '=' * max(4, HEADING_WIDTH - len(base))
 

@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Генератор FixList для Farbar Recovery Scan Tool.
+Движок детекции RUSecurity.
 
-Правила детекции основаны на разборе корпуса экспертных пар «отчёт FRST + fixlist»
-(SafeZone.cc и другие источники) и дополнены эвристиками.
+Правила детекции выведены из разбора корпуса экспертных пар «отчёт + список
+исправлений» (SafeZone.cc и другие источники) и дополнены эвристиками.
 
-Анализирует отчёты FRST.txt и Addition.txt, находит подозрительные записи
-и генерирует файл исправлений fixlist.txt.
+Анализирует отчёты rusecurity-report.txt и rusecurity-add.txt, находит
+подозрительные записи и собирает список исправлений.
 """
 
 import argparse
@@ -22,8 +22,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Dict, List, Optional, Set
 
-from frst_parser import (
-    detect_encoding, normalize_line, parse_additional_report, parse_frst_report,
+from report_parser import (
+    detect_encoding, normalize_line, parse_addition, parse_report,
 )
 
 # ---------------------------------------------------------------------------
@@ -33,7 +33,6 @@ __version__ = '3.0.0'
 IS_WINDOWS = os.name == 'nt'
 RULES_PATH = Path(__file__).parent / 'rules.json'
 CONFIG_PATH = Path(__file__).parent / 'detection_config.json'
-FRST_DIR = Path(__file__).parent / 'FRST'
 SCRIPT_DIR = Path(__file__).parent
 
 # ---------------------------------------------------------------------------
@@ -119,7 +118,7 @@ def _init_console() -> None:
 
 
 def setup_logging(verbose: bool = False) -> None:
-    # Логи пишем в stderr, чтобы `python GenFix.py FRST.txt` (вывод fixlist в
+    # Логи пишем в stderr, чтобы `python GenFix.py rusecurity-report.txt` (вывод списка в
     # stdout) можно было перенаправить в файл без примесей служебных строк.
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(
@@ -785,7 +784,7 @@ def extract_msi_from_task(original: str) -> List[str]:
 
 
 def convert_registry_entry(entry: dict, norm: str, guid_match: Optional[re.Match]) -> Optional[str]:
-    """Convert a registry entry with GUID to proper FRST fixlist command."""
+    """Convert a registry entry with GUID to a proper fix command."""
     if not guid_match:
         return None
 
@@ -905,32 +904,32 @@ def _needs_reboot(fix_entries: List[tuple]) -> bool:
 
 
 def generate_fixlist(
-    frst_path: str,
+    report_path: str,
     _rules: Optional[dict] = None,
     output_path: Optional[str] = None,
     has_third_party_av: bool = False,
     additional_path: Optional[str] = None,
 ) -> str:
-    """Generate a fixlist based on expert-derived detection rules.
+    """Построить список исправлений по правилам детекции.
 
-    _rules is accepted for backward compatibility and ignored.
+    _rules оставлен для обратной совместимости и не используется.
     """
-    # Parse FRST report
+    # Parse report
     try:
-        report = parse_frst_report(frst_path)
-        log.info('Отчёт FRST разобран: %d записей', len(report['entries']))
+        report = parse_report(report_path)
+        log.info('Отчёт разобран: %d записей', len(report['entries']))
     except Exception as exc:
-        log.error('Не удалось разобрать FRST.txt %s: %s', frst_path, exc)
+        log.error('Не удалось разобрать отчёт %s: %s', report_path, exc)
         raise
 
     # Resolve and parse Additional report
     if additional_path is None:
-        additional_path = _resolve_additional_path(frst_path)
+        additional_path = _resolve_addition_path(report_path)
 
     additional_report = {'entries': []}
     if additional_path and os.path.exists(additional_path):
         try:
-            additional_report = parse_additional_report(additional_path)
+            additional_report = parse_addition(additional_path)
             log.info('Дополнительный отчёт разобран: %d записей',
                      len(additional_report['entries']))
         except Exception as exc:
@@ -1404,16 +1403,15 @@ def generate_fixlist(
 # Helpers
 # ===================================================================
 
-def _resolve_additional_path(frst_path: str) -> str:
-    """Find Additional.txt / Addition.txt next to FRST.txt."""
-    base = os.path.basename(frst_path)
-    dir_name = os.path.dirname(frst_path) or '.'
+def _resolve_addition_path(report_path: str) -> str:
+    """Найти дополнительный отчёт рядом с основным."""
+    base = os.path.basename(report_path)
+    dir_name = os.path.dirname(report_path) or '.'
+    stem = os.path.splitext(base)[0]
     candidates = []
-    if base.startswith('FRST_'):
-        candidates.append(os.path.join(dir_name, base.replace('FRST_', 'Additional_', 1)))
+    if stem.endswith('-report'):
+        candidates.append(os.path.join(dir_name, stem[:-len('-report')] + '-add.txt'))
     candidates += [
-        os.path.join(dir_name, 'Addition.txt'),
-        os.path.join(dir_name, 'Additional.txt'),
         os.path.join(dir_name, 'rusecurity-add.txt'),
         os.path.join(dir_name, 'rusecurity-additional.txt'),
     ]
@@ -1428,6 +1426,10 @@ def _resolve_additional_path(frst_path: str) -> str:
 # ===================================================================
 
 _av_cache = None
+
+
+def _powershell_path() -> str:
+    return shutil.which('powershell') or 'powershell.exe'
 
 
 def check_third_party_av() -> bool:
@@ -1682,600 +1684,3 @@ def check_weakened_security(entry: dict) -> List[str]:
             cmds.append(f'Reg: {fix}')
     return cmds
 
-
-# ===================================================================
-# FRST execution
-# ===================================================================
-
-SEE_MASK_NOCLOSEPROCESS = 0x00000040
-SEE_MASK_FLAG_NO_UI = 0x00000400
-ERROR_CANCELLED = 1223
-WAIT_TIMEOUT = 0x00000102
-WAIT_FAILED = 0xFFFFFFFF
-
-
-def _powershell_path() -> str:
-    return shutil.which('powershell') or 'powershell.exe'
-
-
-def _shell_execute(
-    filepath: str,
-    arguments: str = '',
-    working_dir: str = '',
-    wait: bool = True,
-    timeout: int = 300,
-    verb: str = 'runas',
-    show: int = 1,
-) -> bool:
-    """Запустить процесс через ShellExecuteExW (с UAC при verb='runas')."""
-    if not IS_WINDOWS:
-        log.error('Запуск внешних процессов поддерживается только в Windows')
-        return False
-
-    import ctypes
-    from ctypes import wintypes
-
-    class SHELLEXECUTEINFOW(ctypes.Structure):
-        _fields_ = [
-            ('cbSize', wintypes.DWORD),
-            ('fMask', ctypes.c_ulong),
-            ('hwnd', wintypes.HWND),
-            ('lpVerb', wintypes.LPCWSTR),
-            ('lpFile', wintypes.LPCWSTR),
-            ('lpParameters', wintypes.LPCWSTR),
-            ('lpDirectory', wintypes.LPCWSTR),
-            ('nShow', ctypes.c_int),
-            ('hInstApp', wintypes.HINSTANCE),
-            ('lpIDList', ctypes.c_void_p),
-            ('lpClass', wintypes.LPCWSTR),
-            ('hkeyClass', wintypes.HANDLE),
-            ('dwHotKey', wintypes.DWORD),
-            ('hIcon', wintypes.HANDLE),
-            ('hProcess', wintypes.HANDLE),
-        ]
-
-    try:
-        shell32 = ctypes.WinDLL('shell32', use_last_error=True)
-        kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
-        shell32.ShellExecuteExW.argtypes = [ctypes.POINTER(SHELLEXECUTEINFOW)]
-        shell32.ShellExecuteExW.restype = wintypes.BOOL
-
-        sei = SHELLEXECUTEINFOW()
-        sei.cbSize = ctypes.sizeof(sei)
-        sei.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_FLAG_NO_UI
-        sei.lpVerb = verb
-        sei.lpFile = filepath
-        sei.lpParameters = arguments or None
-        sei.lpDirectory = working_dir or None
-        sei.nShow = show
-
-        if not shell32.ShellExecuteExW(ctypes.byref(sei)):
-            error = ctypes.get_last_error()
-            if error == ERROR_CANCELLED:
-                log.error('Запуск отменён в UAC: %s', filepath)
-            else:
-                log.error('Не удалось запустить %s: %s',
-                          filepath, ctypes.FormatError(error).strip())
-            return False
-
-        log.info('Запущен: %s', filepath)
-        handle = sei.hProcess
-        if not wait:
-            if handle:
-                kernel32.CloseHandle(handle)
-            return True
-        if not handle:
-            return True
-
-        result = kernel32.WaitForSingleObject(handle, max(1, int(timeout * 1000)))
-        if result == WAIT_TIMEOUT:
-            log.warning('Таймаут %d сек: %s', timeout, filepath)
-            kernel32.CloseHandle(handle)
-            return False
-        if result == WAIT_FAILED:
-            log.warning('Не удалось дождаться завершения %s', filepath)
-            kernel32.CloseHandle(handle)
-            return False
-        exit_code = wintypes.DWORD()
-        kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code))
-        kernel32.CloseHandle(handle)
-        if exit_code.value != 0:
-            log.warning('%s завершился с кодом %d', filepath, exit_code.value)
-            return False
-        return True
-    except Exception as exc:
-        log.error('Ошибка запуска %s: %s', filepath, exc)
-        return False
-
-
-def _run_elevated(
-    filepath: str,
-    arguments: str = '',
-    working_dir: str = '',
-    wait: bool = True,
-    timeout: int = 300,
-    show: int = 1,
-) -> bool:
-    return _shell_execute(
-        filepath, arguments, working_dir, wait, timeout,
-        verb='runas', show=show,
-    )
-
-
-def _read_fixlog(fixlog: Path) -> None:
-    try:
-        content = fixlog.read_text(encoding=detect_encoding(fixlog), errors='replace')
-    except OSError as exc:
-        log.info('Fixlog.txt создан, но прочитать его не удалось: %s', exc)
-        return
-    rows = [row for row in content.splitlines() if row.strip()]
-    log.info('Fixlog: %s (%d строк)', fixlog, len(rows))
-    if len(rows) <= 12:
-        for row in rows:
-            log.info('  %s', row)
-        return
-    for row in rows[:4]:
-        log.info('  %s', row)
-    log.info('  ...')
-    for row in rows[-8:]:
-        log.info('  %s', row)
-
-
-def apply_fixlist(frst_exe: Path, fixlist_path: Path) -> bool:
-    fixlist = Path(fixlist_path)
-    if not fixlist.is_file() or fixlist.stat().st_size == 0:
-        log.error('Файл fixlist не найден или пуст: %s', fixlist)
-        return False
-
-    FRST_DIR.mkdir(parents=True, exist_ok=True)
-    target = FRST_DIR / 'fixlist.txt'
-    if fixlist.resolve() != target.resolve():
-        try:
-            shutil.copyfile(fixlist, target)
-            log.info('Fixlist скопирован в папку FRST: %s', target)
-        except OSError as exc:
-            log.error('Не удалось скопировать fixlist в %s: %s', FRST_DIR, exc)
-            return False
-
-    fixlog = FRST_DIR / 'Fixlog.txt'
-    try:
-        fixlog.unlink()
-    except FileNotFoundError:
-        pass
-    except OSError as exc:
-        log.warning('Не удалось удалить старый Fixlog.txt: %s', exc)
-
-    log.info('Запуск FRST для применения исправлений...')
-    log.info('FRST найдёт fixlist.txt в своей папке. Нажмите "Fix" в окне FRST.')
-    if not _run_elevated(str(frst_exe), working_dir=str(FRST_DIR), wait=False):
-        log.error('FRST не удалось запустить (UAC отклонён?)')
-        return False
-
-    if not wait_for_report(fixlog, 'Fixlog.txt', timeout=600):
-        log.warning('Fixlog.txt не найден. Возможно, FRST не завершил работу.')
-        return False
-
-    _read_fixlog(fixlog)
-    return True
-
-
-REPORT_END_MARKERS = {
-    'frst.txt': ('конец от frst', 'конец frst', 'end of frst'),
-    'addition.txt': ('конец addition', 'конец от addition', 'end of addition'),
-    'additional.txt': ('конец addition', 'конец от addition', 'end of addition'),
-    'fixlog.txt': ('конец от fixlog', 'конец fixlog', 'end of fixlog'),
-}
-DEFAULT_END_MARKERS = ('конец от', 'end of')
-
-
-def wait_for_report(filepath: Path, label: str, timeout: int = 300,
-                    end_markers: Optional[tuple] = None) -> bool:
-    """Ждать файл, пока в его конце не появится маркер завершения.
-
-    Размер и содержимое растут во время сканирования, поэтому готовность
-    определяется только точным маркером конца отчёта: промежуточные строки
-    вида ``==== Процессы ====`` не должны приниматься за конец.
-    """
-    markers = end_markers or REPORT_END_MARKERS.get(
-        filepath.name.lower(), DEFAULT_END_MARKERS)
-    log.info('Ожидание %s ...', label)
-    prev_size, stable_count = -1, 0
-    for i in range(timeout):
-        if not filepath.exists():
-            if i % 15 == 0:
-                log.info('  %s: файл ещё не создан (%d сек)', label, i)
-            time.sleep(1)
-            continue
-        current_size = filepath.stat().st_size
-        if i % 60 == 0 and i > 0:
-            log.info('  %s: ожидание... (%d сек, %d байт)', label, i, current_size)
-        if current_size == prev_size and current_size > 0:
-            stable_count += 1
-        else:
-            stable_count = 0
-        if stable_count >= 10:
-            last_line = _read_last_nonempty_line(filepath)
-            last_clean = ' '.join(last_line.lstrip('\ufeff').lower().split())
-            if any(marker in last_clean for marker in markers):
-                log.info('  %s: готов (%d байт)', label, current_size)
-                return True
-        prev_size = current_size
-        time.sleep(1)
-    log.warning('  %s: ТАЙМАУТ %d сек — отчёт не дописан', label, timeout)
-    return False
-
-
-def _read_last_nonempty_line(filepath: Path) -> str:
-    """Read the last non-empty line, skipping trailing blank lines."""
-    try:
-        with open(filepath, 'rb') as f:
-            f.seek(0, 2)
-            size = f.tell()
-            if size == 0:
-                return ''
-            read_size = min(size, 8192)
-            f.seek(size - read_size)
-            chunk = f.read()
-        enc = detect_encoding(filepath)
-        text = chunk.decode(enc, errors='replace')
-        for line in reversed(text.splitlines()):
-            line = line.strip()
-            if line:
-                return line
-    except (OSError, UnicodeDecodeError):
-        pass
-    return ''
-
-
-def _read_last_line(filepath: Path) -> str:
-    """Read only the last line of a file without loading the entire file."""
-    try:
-        with open(filepath, 'rb') as f:
-            f.seek(0, 2)
-            size = f.tell()
-            if size == 0:
-                return ''
-            read_size = min(size, 8192)
-            f.seek(size - read_size)
-            chunk = f.read()
-            lines = chunk.split(b'\n')
-            if lines and lines[-1] == b'':
-                lines = lines[:-1]
-            raw = lines[-1] if lines else b''
-            enc = detect_encoding(filepath)
-            return raw.decode(enc, errors='replace').rstrip('\r')
-    except (OSError, UnicodeDecodeError):
-        return ''
-
-
-# ===================================================================
-# Console helpers
-# ===================================================================
-
-def cleanup_frst_files() -> None:
-    """Delete FRST.txt, Addition.txt/Additional.txt, and fixlist.txt from FRST dir."""
-    files_to_delete = ['FRST.txt', 'Addition.txt', 'Additional.txt', 'fixlist.txt']
-    deleted = []
-    errors = []
-    for name in files_to_delete:
-        p = FRST_DIR / name
-        if p.exists():
-            try:
-                p.unlink()
-                deleted.append(name)
-            except PermissionError:
-                errors.append(f'{name} (файл заблокирован)')
-            except OSError as exc:
-                errors.append(f'{name} ({exc})')
-    if deleted:
-        print(f"  Удалено: {', '.join(deleted)}")
-    if errors:
-        print(f"  Ошибки: {', '.join(errors)}")
-    if not deleted and not errors:
-        print("  Нечего удалять.")
-
-
-def resize_console(cols: int = 40, rows: int = 30) -> None:
-    """Set console window width to ~cols and height to ~rows."""
-    try:
-        subprocess.run(
-            [_powershell_path(), '-NoProfile', '-Command',
-             f'$h = Get-Host; $w = $h.UI.RawUI.WindowSize; '
-             f'$w.Width = [Math]::Min({cols}, $h.UI.RawUI.MaxWindowSize.Width); '
-             f'$w.Height = [Math]::Min({rows}, $h.UI.RawUI.MaxWindowSize.Height); '
-             f'$h.UI.RawUI.WindowSize = $w; '
-             f'$b = $h.UI.RawUI.BufferSize; $b.Width = $w.Width; $h.UI.RawUI.BufferSize = $b'],
-            capture_output=True, timeout=5,
-            creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
-        )
-    except (subprocess.TimeoutExpired, OSError):
-        pass
-
-
-# ===================================================================
-# Interactive menus
-# ===================================================================
-
-def _find_frst_exe() -> Optional[Path]:
-    for name in ('FRST64.exe', 'FRST.exe'):
-        p = FRST_DIR / name
-        if p.exists():
-            return p
-    return None
-
-
-def _confirm_apply(output_path: Path) -> None:
-    frst_exe = _find_frst_exe()
-    if frst_exe is None:
-        log.error('FRST64.exe не найден в %s', FRST_DIR)
-        return
-    answer = input('Применить исправления? Запустится FRST — нужно будет нажать "Fix". [y/N] ').strip().lower()
-    if answer != 'y':
-        log.info('Применение отменено.')
-        return
-    apply_fixlist(frst_exe, output_path)
-
-
-def _select_fixlist_entries(output_path: Path) -> bool:
-    with open(output_path, 'r', encoding='utf-8') as f:
-        content = f.read()
-    _h, body, _f = parse_fixlist_content(content)
-    total = sum(1 for line in body if is_action_line(line))
-    if total == 0:
-        log.info('Нет исправлений для выбора.')
-        return False
-    print(f'\nВведите номера исправлений (1-{total}), например: 1,3,5-7. Пустой ввод — все.')
-    nums = input('> ').strip()
-    filtered = filter_fixlist_by_numbers(content, nums)
-    _h, new_body, _f = parse_fixlist_content(filtered)
-    selected = sum(1 for line in new_body if is_action_line(line))
-    if selected == 0:
-        log.warning('Не выбрано ни одного исправления — файл не изменён.')
-        return False
-    log.info('Выбрано %d из %d.', selected, total)
-    with open(output_path, 'w', encoding='utf-8') as f:
-        f.write(filtered)
-    display_fixlist(output_path)
-    return True
-
-
-def _post_generation_menu(output_path: Path) -> None:
-    while True:
-        print('\nЧто дальше?')
-        print('1. Выполнить все исправления')
-        print('2. Выбрать исправления для применения')
-        print('3. Вернуться назад')
-        choice = input('> ').strip()
-        if choice == '1':
-            _confirm_apply(output_path)
-            break
-        elif choice == '2':
-            if _select_fixlist_entries(output_path):
-                _confirm_apply(output_path)
-            break
-        elif choice == '3':
-            break
-
-
-def analyse_and_show(frst_path: Path, output_path: Path,
-                     has_third_party_av: bool = False,
-                     additional_path: Optional[Path] = None) -> None:
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        result = generate_fixlist(
-            str(frst_path), output_path=str(output_path),
-            has_third_party_av=has_third_party_av,
-            additional_path=str(additional_path) if additional_path else None,
-        )
-    except Exception as exc:
-        log.error('Не удалось проанализировать отчёт: %s', exc)
-        log.debug('Подробности', exc_info=True)
-        input('Нажмите Enter чтобы вернуться в меню...')
-        return
-    if not result.strip():
-        input('Нажмите Enter чтобы вернуться в меню...')
-        return
-    display_fixlist(output_path)
-    _post_generation_menu(output_path)
-
-
-CLEANUP_TARGETS = ('FRST.txt', 'Addition.txt', 'Additional.txt', 'fixlist.txt')
-
-
-def menu_cleanup() -> None:
-    """Пункт 3: удалить отчёты и fixlist, только если они есть."""
-    print('  Удаление файлов FRST, Addition и Fixlist из .\\FRST\\')
-    existing = [name for name in CLEANUP_TARGETS if (FRST_DIR / name).exists()]
-    if not existing:
-        print('  Папка FRST пуста — удалять нечего.')
-        input('\n  Нажмите Enter чтобы вернуться в меню...')
-        return
-    print(f"  Файлы к удалению: {', '.join(existing)}")
-    if input('  Удалить? [y/N] ').strip().lower() == 'y':
-        cleanup_frst_files()
-    else:
-        log.info('Удаление отменено.')
-    input('\n  Нажмите Enter чтобы вернуться в меню...')
-
-
-def menu_analyse() -> None:
-    has_av = check_third_party_av()
-    print('\nПоложите FRST.txt (и Additional.txt/Addition.txt) в папку .\\FRST\\')
-    print('и нажмите Enter. Можно указать путь к FRST.txt вручную. 0 — назад.')
-    choice = input('> ').strip().strip('"')
-    if choice == '0':
-        return
-    frst_path = Path(choice) if choice else FRST_DIR / 'FRST.txt'
-    if not frst_path.is_file():
-        log.error('FRST.txt не найден: %s', frst_path)
-        input('Нажмите Enter чтобы вернуться в меню...')
-        return
-    additional_candidate = Path(_resolve_additional_path(str(frst_path)))
-    additional_path = additional_candidate if additional_candidate.is_file() else None
-    output_path = FRST_DIR / 'fixlist.txt'
-    analyse_and_show(frst_path, output_path, has_third_party_av=has_av,
-                     additional_path=additional_path)
-
-
-SCAN_TIMEOUT = 1800  # единый лимит на ожидание FRST.txt + Addition.txt (сек)
-
-
-def menu_scan() -> None:
-    has_av = check_third_party_av()
-    frst_exe = _find_frst_exe()
-    if frst_exe is None:
-        log.error('FRST64.exe не найден в %s', FRST_DIR)
-        input('Нажмите Enter...')
-        return
-
-    FRST_DIR.mkdir(parents=True, exist_ok=True)
-    # Старые отчёты удаляем ДО запуска, иначе FRST перезапишет их во время
-    # сканирования, а мы удалим уже свежий файл. Старый fixlist тоже убираем,
-    # чтобы до конца сканирования в папке не лежал результат прошлого запуска.
-    for old in ['FRST.txt', 'Additional.txt', 'Addition.txt', 'fixlist.txt']:
-        p = FRST_DIR / old
-        try:
-            p.unlink()
-        except FileNotFoundError:
-            pass
-        except OSError as exc:
-            log.error('Не удалось удалить старый %s: %s', p.name, exc)
-            input('Закройте файл и повторите. Нажмите Enter...')
-            return
-
-    log.info('Запуск FRST для сканирования (от имени администратора)...')
-    if not _run_elevated(str(frst_exe), working_dir=str(FRST_DIR), wait=False):
-        log.error('FRST не запустился (UAC отклонён?)')
-        input('Нажмите Enter...')
-        return
-    log.info('В окне FRST нажмите "Scan" и дождитесь завершения. Ctrl+C — прервать.')
-
-    deadline = time.monotonic() + SCAN_TIMEOUT
-    frst_report = FRST_DIR / 'FRST.txt'
-    try:
-        remaining = max(1, int(deadline - time.monotonic()))
-        if not wait_for_report(frst_report, 'FRST.txt', timeout=remaining):
-            log.error('FRST.txt не дописан — анализ не запускаю.')
-            input('Нажмите Enter...')
-            return
-
-        additional_path = None
-        attempt = 0
-        while time.monotonic() < deadline:
-            for candidate in ['Addition.txt', 'Additional.txt']:
-                p = FRST_DIR / candidate
-                if p.exists():
-                    additional_path = p
-                    break
-            if additional_path:
-                break
-            attempt += 1
-            if attempt % 15 == 0:
-                log.info('  Ожидание Addition.txt (FRST создаёт его после сканирования)...')
-            time.sleep(1)
-        if not additional_path:
-            log.error('Addition.txt не появился — анализ не запускаю.')
-            input('Нажмите Enter...')
-            return
-
-        remaining = max(1, int(deadline - time.monotonic()))
-        if not wait_for_report(additional_path, additional_path.name, timeout=remaining):
-            log.error('%s не дописан — анализ не запускаю.', additional_path.name)
-            input('Нажмите Enter...')
-            return
-    except (KeyboardInterrupt, EOFError):
-        log.info('Сканирование прервано пользователем.')
-        return
-
-    log.info('Сканирование завершено: FRST.txt и %s готовы.', additional_path.name)
-    output_path = FRST_DIR / 'fixlist.txt'
-    analyse_and_show(frst_report, output_path, has_third_party_av=has_av,
-                     additional_path=additional_path)
-
-
-def show_menu() -> None:
-    if _USE_COLOR:
-        B, C, G, Y, D, R = '\033[1m', '\033[36m', '\033[32m', '\033[33m', '\033[91m', '\033[0m'
-    else:
-        B = C = G = Y = D = R = ''
-    os.system('cls' if os.name == 'nt' else 'clear')
-    print(f"{C}{'=' * 20}{R}")
-    print(f'{B}{C}FIXLIST{R}')
-    print(f"{C}{'=' * 20}{R}\n")
-    print(f' {G}{B}1.{R} {B}Просканировать систему с помощью FRST{R}')
-    print(f' {Y}{B}2.{R} {B}Анализировать FRST.txt{R}')
-    print(f' {D}{B}3.{R} {B}Удалить файлы FRST, Addition и Fixlist{R}\n')
-    print(f' {B}0. Выход{R}\n')
-
-
-# ===================================================================
-# Entry point
-# ===================================================================
-
-def main() -> None:
-    # Ресайз идёт через PowerShell и может сбросить кодовую страницу консоли,
-    # поэтому выполняем его до _init_console, а не после.
-    if IS_WINDOWS and sys.stdout.isatty():
-        resize_console(120, 40)
-    _init_console()
-
-    parser = argparse.ArgumentParser(
-        prog='GenFix',
-        description='Генератор fixlist для Farbar Recovery Scan Tool.',
-    )
-    parser.add_argument('frst', nargs='?', help='путь к FRST.txt (CLI-режим)')
-    parser.add_argument('output', nargs='?',
-                        help='куда сохранить fixlist (по умолчанию stdout)')
-    parser.add_argument('-o', '--output', dest='output_opt', metavar='PATH',
-                        help='куда сохранить fixlist (альтернатива позиционному аргументу)')
-    parser.add_argument('-v', '--verbose', action='store_true', help='подробный лог')
-    parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}')
-    args = parser.parse_args()
-
-    setup_logging(verbose=args.verbose)
-
-    if args.frst:
-        frst_path = args.frst
-        output_path = args.output_opt or args.output
-        if not os.path.isfile(frst_path):
-            log.error('Файл не найден: %s', frst_path)
-            sys.exit(1)
-        try:
-            has_av = check_third_party_av()
-            generate_fixlist(frst_path, output_path=output_path,
-                             has_third_party_av=has_av)
-        except Exception as exc:
-            log.error('Не удалось сформировать fixlist: %s', exc)
-            log.debug('Подробности', exc_info=True)
-            sys.exit(1)
-        return
-
-    if not IS_WINDOWS:
-        log.error('Интерактивный режим доступен только в Windows.')
-        sys.exit(1)
-
-    try:
-        while True:
-            show_menu()
-            choice = input('> ').strip()
-            if choice == '1':
-                menu_scan()
-            elif choice == '2':
-                menu_analyse()
-            elif choice == '3':
-                os.system('cls' if os.name == 'nt' else 'clear')
-                menu_cleanup()
-            elif choice == '0':
-                log.info('Выход.')
-                break
-    except (KeyboardInterrupt, EOFError):
-        print('\nВыход.')
-        log.info('Выход.')
-    except Exception as exc:
-        log.error('Непредвиденная ошибка: %s', exc)
-        log.debug('Подробности', exc_info=True)
-        sys.exit(1)
-
-
-if __name__ == '__main__':
-    main()

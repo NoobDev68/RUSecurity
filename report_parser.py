@@ -1,4 +1,4 @@
-"""Парсинг отчётов FRST.txt / Addition.txt и файлов fixlist.txt."""
+"""Парсинг отчётов rusecurity-report.txt / rusecurity-add.txt и файлов fixlist.txt."""
 
 import os
 import re
@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Tuple
 # ---------------------------------------------------------------------------
 # Section recognition
 # ---------------------------------------------------------------------------
-# Заголовки FRST выглядят как «========== Реестр Windows ==========».
+# Заголовки отчётов выглядят как «========== Реестр Windows ==========».
 # Отчёты бывают русскими и английскими, поэтому ищем ключевые слова обоих
 # языков. Порядок важен: более конкретные заголовки идут раньше общих.
 SECTION_KEYWORDS: List[Tuple[str, str]] = [
@@ -53,7 +53,7 @@ SECTION_KEYWORDS: List[Tuple[str, str]] = [
     ('bcd', 'bcd'),
 ]
 
-# Заголовки Addition.txt. Неизвестные разделы попадают в other_N — по этому
+# Заголовки rusecurity-add.txt. Неизвестные разделы попадают в other_N — по этому
 # префиксу проверяются ослабленные настройки безопасности.
 ADDITIONAL_SECTIONS: List[Tuple[str, str]] = [
     ('alternate data streams', 'alternate_streams'),
@@ -104,7 +104,7 @@ RE_NOT_SIGNED = re.compile(r'\[(?:файл не подписан|file not signed
 RE_SERVICE_ENTRY = re.compile(r'^[RSU][0-9]\s')
 RE_BROWSER_PREFIXES = ('CHR ', 'Edge ', 'FF ', 'OPR ', 'YAN ', 'Brave ')
 
-# Служебные строки-пояснения FRST, которые не являются записями.
+# Служебные строки-пояснения в отчёте, которые не являются записями.
 SKIP_PREFIXES = (
     'Если запись', 'Если элемент', 'В fixlist', 'Нет автоматического',
     'If an entry', 'If an element', 'In fixlist', 'No automatic',
@@ -113,7 +113,7 @@ SKIP_PREFIXES = (
 BOM_UTF8 = b'\xef\xbb\xbf'
 BOM_UTF16 = (b'\xff\xfe', b'\xfe\xff')
 
-# Достаточно префикса, чтобы отличить UTF-8 от CP1251: заголовки FRST содержат
+# Достаточно префикса, чтобы отличить UTF-8 от CP1251: заголовки содержат
 # нелатинские символы уже в первых строках. Полное чтение файла здесь излишне
 # (detect_encoding вызывается в цикле ожидания отчёта на каждом тике).
 _ENCODING_PROBE_SIZE = 64 * 1024
@@ -159,7 +159,7 @@ def _detect_section(line: str) -> Optional[str]:
     return None
 
 
-def _detect_additional_section(line: str) -> Optional[str]:
+def _detect_addition_section(line: str) -> Optional[str]:
     text = _header_text(line)
     if not text:
         return None
@@ -201,7 +201,7 @@ def _browser_field(normalized: str, field: str) -> bool:
 
 
 def _make_entry(section: str, line: str) -> Dict:
-    """Построить запись с одинаковым набором флагов для FRST и Addition."""
+    """Построить запись с одинаковым набором флагов для основного и дополнительного отчёта."""
     normalized = normalize_line(line)
     normalized = re.sub(r'[\.\!\?]$', '', normalized)
     low = normalized.lower()
@@ -254,8 +254,8 @@ def _build_entries(sections: Dict[str, List[str]]) -> List[Dict]:
     return entries
 
 
-def parse_frst_report(filepath: str) -> Dict:
-    """Разобрать FRST.txt на секции и записи."""
+def parse_report(filepath: str) -> Dict:
+    """Разобрать rusecurity-report.txt на секции и записи."""
     enc = detect_encoding(filepath)
     with open(filepath, 'r', encoding=enc, errors='replace') as f:
         lines = f.readlines()
@@ -269,8 +269,8 @@ def parse_frst_report(filepath: str) -> Dict:
     }
 
 
-def parse_additional_report(filepath: str) -> Dict:
-    """Разобрать Addition.txt на секции и записи."""
+def parse_addition(filepath: str) -> Dict:
+    """Разобрать rusecurity-add.txt на секции и записи."""
     result: Dict = {'metadata': {}, 'sections': {}, 'entries': []}
     if not os.path.exists(filepath):
         return result
@@ -297,7 +297,7 @@ def parse_additional_report(filepath: str) -> Dict:
         text = _header_text(line)
         if text:
             flush()
-            section = _detect_additional_section(line)
+            section = _detect_addition_section(line)
             if section is None:
                 other_counter += 1
                 section = f'other_{other_counter}'

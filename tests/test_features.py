@@ -172,8 +172,8 @@ def test_cli_restore_returns_file(tmp_path, monkeypatch):
 
 
 def test_ads_entry_reaches_fixlist(tmp_path):
-    frst = tmp_path / 'rusecurity-report.txt'
-    frst.write_text(
+    report = tmp_path / 'rusecurity-report.txt'
+    report.write_text(
         '==================== Службы (Все) ====================\n'
         'R2 Test; C:\\test.exe\n'
         '==================== Конец отчёта ====================\n',
@@ -184,7 +184,7 @@ def test_ads_entry_reaches_fixlist(tmp_path):
         r'AlternateDataStreams: C:\Temp\file.txt:secret [5]' '\n'
         '==================== Конец дополнительного отчёта ====================\n',
         encoding='utf-8')
-    result = analyzer.analyze(frst, addition)
+    result = analyzer.analyze(report, addition)
     assert 'AlternateDataStreams: C:\\Temp\\file.txt:secret [5]' in result.text
     assert 'EmptyTemp:' not in result.text
 

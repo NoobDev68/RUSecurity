@@ -16,7 +16,7 @@ RUN_VALUES = (
     ('RunServicesOnce', 'RunServicesOnce'),
 )
 
-# Ограничительные политики, которые FRST помечает как нежелательные.
+# Ограничительные политики, которые детектор помечает как нежелательные.
 POLICY_VALUES = {
     'DisableTaskMgr', 'DisableRegistryTools', 'DisableCMD', 'RestrictRun',
     'DisallowRun', 'DisableSR', 'DisableConfig',

@@ -95,7 +95,7 @@ def command_suffix(command: str) -> str:
 
 
 def format_shortcut(path: str, target: str, arguments: str) -> str:
-    """Строка ярлыка в стиле FRST: Shortcut/ShortcutWithArgument."""
+    """Строка ярлыка: Shortcut/ShortcutWithArgument."""
     arguments = arguments.strip()
     if os.path.isfile(target):
         note = publisher_note(target)

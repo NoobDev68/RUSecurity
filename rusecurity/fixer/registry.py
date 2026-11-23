@@ -1,4 +1,4 @@
-"""Реестр: нотация FRST → реальный путь, удаление, восстановление, экспорт."""
+"""Реестр: нотация пути → реальный ключ, удаление, восстановление, экспорт."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ _HIVES = {
 
 _VIEW_64 = winreg.KEY_WOW64_64KEY
 
-# Сокращение FRST «...» означает разный префикс в зависимости от ключа:
+# Сокращение «...» означает разный префикс в зависимости от ключа:
 # ...\Run → Microsoft\Windows\CurrentVersion, ...\MountPoints2 →
 # ...\CurrentVersion\Explorer, ...\Windows Defender → Policies\Microsoft.
 _ALIAS_ROOTS = (

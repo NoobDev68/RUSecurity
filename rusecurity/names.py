@@ -1,8 +1,7 @@
 """Имена файлов RUSecurity.
 
-Намеренно не совпадают с FRST (`FRST.txt`, `Addition.txt`, `fixlist.txt`), чтобы
-отчёты приложения не путались с отчётами FRST. Анализатор при этом по-прежнему
-принимает и «родные» имена FRST.
+Отчёты, список исправлений и журнал лежат рядом с программой и названы
+по-своему, чтобы не путаться с файлами других инструментов.
 """
 
 from __future__ import annotations
@@ -17,7 +16,6 @@ FIXLOG = 'rusecurity-log.txt'
 JOURNAL = 'rusecurity-journal.txt'
 BACKUPS = 'Backups'
 
-LEGACY_ADDITION = 'Addition.txt'
 LEGACY_RUSECURITY_ADDITION = 'rusecurity-additional.txt'
 
 
@@ -30,5 +28,4 @@ def addition_candidates(report_path: Path) -> List[Path]:
         candidates.append(report_path.with_name(stem[:-len('-report')] + '-add.txt'))
     candidates.append(report_path.with_name(ADDITION))
     candidates.append(report_path.with_name(LEGACY_RUSECURITY_ADDITION))
-    candidates.append(report_path.with_name(LEGACY_ADDITION))
     return candidates

@@ -23,7 +23,7 @@ sys.path.insert(0, str(PROJECT_DIR))
 
 def _entry(original: str, **overrides) -> dict:
     """Build a minimal mock entry dict with sensible defaults."""
-    from frst_parser import normalize_line
+    from report_parser import normalize_line
 
     e = {
         'section': 'test',
@@ -386,34 +386,34 @@ class TestExtractMsiFromTask:
 # ===================================================================
 
 class TestResolveAdditionalPath:
-    def test_additional_exists(self, tmp_path):
-        frst = tmp_path / 'FRST_2024-06-01.txt'
-        frst.write_text('')
-        add = tmp_path / 'Additional_2024-06-01.txt'
+    def test_addition_by_report_stem(self, tmp_path):
+        report = tmp_path / 'scan-report.txt'
+        report.write_text('')
+        add = tmp_path / 'scan-add.txt'
         add.write_text('')
 
-        from GenFix import _resolve_additional_path
-        result = _resolve_additional_path(str(frst))
+        from GenFix import _resolve_addition_path
+        result = _resolve_addition_path(str(report))
         assert result == str(add)
 
     def test_addition_fallback(self, tmp_path):
-        frst = tmp_path / 'FRST.txt'
-        frst.write_text('')
-        add = tmp_path / 'Addition.txt'
+        report = tmp_path / 'rusecurity-report.txt'
+        report.write_text('')
+        add = tmp_path / 'rusecurity-add.txt'
         add.write_text('')
 
-        from GenFix import _resolve_additional_path
-        result = _resolve_additional_path(str(frst))
+        from GenFix import _resolve_addition_path
+        result = _resolve_addition_path(str(report))
         assert result == str(add)
 
     def test_no_additional(self, tmp_path):
-        frst = tmp_path / 'FRST.txt'
-        frst.write_text('')
+        report = tmp_path / 'rusecurity-report.txt'
+        report.write_text('')
 
-        from GenFix import _resolve_additional_path
-        result = _resolve_additional_path(str(frst))
-        # Returns first fallback candidate
-        assert 'Addition.txt' in result
+        from GenFix import _resolve_addition_path
+        result = _resolve_addition_path(str(report))
+        # Возвращается первый ожидаемый файл
+        assert 'rusecurity-add.txt' in result
 
 
 # ===================================================================
@@ -555,8 +555,8 @@ class TestGenerateFixlist:
         """Пустой отчёт не создаёт fixlist."""
         from GenFix import generate_fixlist
 
-        frst = tmp_path / 'FRST.txt'
-        frst.write_text('==== Раздел ====\n==== Конец ====', encoding='utf-8')
+        report = tmp_path / 'rusecurity-report.txt'
+        report.write_text('==== Раздел ====\n==== Конец ====', encoding='utf-8')
 
         rules = {
             'exact_set': set(),
@@ -568,7 +568,7 @@ class TestGenerateFixlist:
         }
 
         output = tmp_path / 'fixlist.txt'
-        result = generate_fixlist(str(frst), rules, output_path=str(output))
+        result = generate_fixlist(str(report), rules, output_path=str(output))
 
         assert result == ''
         assert not output.exists()
@@ -577,8 +577,8 @@ class TestGenerateFixlist:
         """Правка только реестра не требует EmptyTemp/Reboot."""
         from GenFix import generate_fixlist
 
-        frst = tmp_path / 'FRST.txt'
-        frst.write_text(
+        report = tmp_path / 'rusecurity-report.txt'
+        report.write_text(
             '==== Group Policy ====\n'
             'HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\Explorer: '
             '[SettingsPageVisibility] Ограничение <==== ATTENTION\n'
@@ -587,7 +587,7 @@ class TestGenerateFixlist:
         )
 
         output = tmp_path / 'fixlist.txt'
-        result = generate_fixlist(str(frst), output_path=str(output))
+        result = generate_fixlist(str(report), output_path=str(output))
 
         assert 'SettingsPageVisibility' in result
         assert 'EmptyTemp:' not in result
@@ -597,8 +597,8 @@ class TestGenerateFixlist:
         """Браузерное исправление требует очистки temp, но не перезагрузки."""
         from GenFix import generate_fixlist
 
-        frst = tmp_path / 'FRST.txt'
-        frst.write_text(
+        report = tmp_path / 'rusecurity-report.txt'
+        report.write_text(
             '==== Chrome ====\n'
             'CHR HKLM\\...\\Chrome\\Extension: [aegnopegbbhjeeiganiajffnalhlkkjb]\n'
             '==== Конец ====',
@@ -606,7 +606,7 @@ class TestGenerateFixlist:
         )
 
         output = tmp_path / 'fixlist.txt'
-        result = generate_fixlist(str(frst), output_path=str(output))
+        result = generate_fixlist(str(report), output_path=str(output))
 
         assert 'EmptyTemp:' in result
         assert 'Reboot:' not in result
@@ -615,8 +615,8 @@ class TestGenerateFixlist:
         """Удаление службы/драйвера требует перезагрузки."""
         from GenFix import generate_fixlist
 
-        frst = tmp_path / 'FRST.txt'
-        frst.write_text(
+        report = tmp_path / 'rusecurity-report.txt'
+        report.write_text(
             '==== Services ====\n'
             'S2 badsvc; C:\\Windows\\System32\\drivers\\bad.sys <==== ATTENTION\n'
             '==== Конец ====',
@@ -624,7 +624,7 @@ class TestGenerateFixlist:
         )
 
         output = tmp_path / 'fixlist.txt'
-        result = generate_fixlist(str(frst), output_path=str(output))
+        result = generate_fixlist(str(report), output_path=str(output))
 
         assert 'Reboot:' in result
         assert 'EmptyTemp:' not in result
@@ -633,8 +633,8 @@ class TestGenerateFixlist:
         """Мёртвая служба без файла удаляется без перезагрузки."""
         from GenFix import generate_fixlist
 
-        frst = tmp_path / 'FRST.txt'
-        frst.write_text(
+        report = tmp_path / 'rusecurity-report.txt'
+        report.write_text(
             '==== Services ====\n'
             'S2 deadsvc; C:\\Windows\\System32\\drivers\\dead.sys (Нет файла)\n'
             '==== Конец ====',
@@ -642,7 +642,7 @@ class TestGenerateFixlist:
         )
 
         output = tmp_path / 'fixlist.txt'
-        result = generate_fixlist(str(frst), output_path=str(output))
+        result = generate_fixlist(str(report), output_path=str(output))
 
         assert 'Reboot:' not in result
 
@@ -650,8 +650,8 @@ class TestGenerateFixlist:
         """Удаление файла из Temp требует очистки temp, но не перезагрузки."""
         from GenFix import generate_fixlist
 
-        frst = tmp_path / 'FRST.txt'
-        frst.write_text(
+        report = tmp_path / 'rusecurity-report.txt'
+        report.write_text(
             '==== Shortcuts ====\n'
             'Shortcut: C:\\Users\\x\\AppData\\Local\\Temp\\bad.lnk => '
             'C:\\Users\\x\\AppData\\Local\\Temp\\bad.exe (Нет файла)\n'
@@ -660,7 +660,7 @@ class TestGenerateFixlist:
         )
 
         output = tmp_path / 'fixlist.txt'
-        result = generate_fixlist(str(frst), output_path=str(output))
+        result = generate_fixlist(str(report), output_path=str(output))
 
         assert 'EmptyTemp:' in result
         assert 'Reboot:' not in result
@@ -669,8 +669,8 @@ class TestGenerateFixlist:
         """Ярлык с рабочего стола на файл в Temp удаляется без чистки Temp."""
         from GenFix import generate_fixlist
 
-        frst = tmp_path / 'FRST.txt'
-        frst.write_text(
+        report = tmp_path / 'rusecurity-report.txt'
+        report.write_text(
             '==== Shortcuts ====\n'
             'Shortcut: C:\\Users\\x\\Desktop\\bad.lnk -> '
             'C:\\Users\\x\\AppData\\Local\\Temp\\bad.exe (Нет файла)\n'
@@ -679,7 +679,7 @@ class TestGenerateFixlist:
         )
 
         output = tmp_path / 'fixlist.txt'
-        result = generate_fixlist(str(frst), output_path=str(output))
+        result = generate_fixlist(str(report), output_path=str(output))
 
         assert 'bad.lnk' in result
         assert 'EmptyTemp:' not in result
@@ -688,8 +688,8 @@ class TestGenerateFixlist:
         """Report with malicious extension → flagged in fixlist."""
         from GenFix import generate_fixlist
 
-        frst = tmp_path / 'FRST.txt'
-        frst.write_text(
+        report = tmp_path / 'rusecurity-report.txt'
+        report.write_text(
             '==== Chrome ====\n'
             'CHR HKLM\\...\\Chrome\\Extension: [aegnopegbbhjeeiganiajffnalhlkkjb]\n'
             '==== Конец ====',
@@ -706,7 +706,7 @@ class TestGenerateFixlist:
         }
 
         output = tmp_path / 'fixlist.txt'
-        result = generate_fixlist(str(frst), rules, output_path=str(output))
+        result = generate_fixlist(str(report), rules, output_path=str(output))
 
         assert 'aegnopegbbhjeeiganiajffnalhlkkjb' in result
 
@@ -714,8 +714,8 @@ class TestGenerateFixlist:
         """Legitimate extension not flagged."""
         from GenFix import generate_fixlist
 
-        frst = tmp_path / 'FRST.txt'
-        frst.write_text(
+        report = tmp_path / 'rusecurity-report.txt'
+        report.write_text(
             '==== Chrome ====\n'
             'CHR HKLM\\...\\Chrome\\Extension: [efaidnbmnnnibpcajpcglclefindmkaj]\n'
             '==== Конец ====',
@@ -732,7 +732,7 @@ class TestGenerateFixlist:
         }
 
         output = tmp_path / 'fixlist.txt'
-        result = generate_fixlist(str(frst), rules, output_path=str(output))
+        result = generate_fixlist(str(report), rules, output_path=str(output))
 
         assert 'efaidnbmnnnibpcajpcglclefindmkaj' not in result
 
@@ -740,8 +740,8 @@ class TestGenerateFixlist:
         """Defender-disabled entries skipped when 3rd party AV present."""
         from GenFix import generate_fixlist
 
-        frst = tmp_path / 'FRST.txt'
-        frst.write_text(
+        report = tmp_path / 'rusecurity-report.txt'
+        report.write_text(
             '==== Реестр Windows ====\n'
             'HKLM\\SOFTWARE\\Microsoft\\Windows Defender: [DisableAntiSpyware] Ограничение <==== ВНИМАНИЕ\n'
             '==== Конец ====',
@@ -758,7 +758,7 @@ class TestGenerateFixlist:
         }
 
         output = tmp_path / 'fixlist.txt'
-        result = generate_fixlist(str(frst), rules, output_path=str(output), has_third_party_av=True)
+        result = generate_fixlist(str(report), rules, output_path=str(output), has_third_party_av=True)
 
         assert 'DisableAntiSpyware' not in result
 
@@ -766,8 +766,8 @@ class TestGenerateFixlist:
         """Zone.Identifier ADS entries skipped."""
         from GenFix import generate_fixlist
 
-        frst = tmp_path / 'FRST.txt'
-        frst.write_text(
+        report = tmp_path / 'rusecurity-report.txt'
+        report.write_text(
             '==== Alternate Data Streams ====\n'
             'AlternateDataStreams: C:\\file.exe:Zone.Identifier\n'
             '==== Конец ====',
@@ -784,7 +784,7 @@ class TestGenerateFixlist:
         }
 
         output = tmp_path / 'fixlist.txt'
-        result = generate_fixlist(str(frst), rules, output_path=str(output))
+        result = generate_fixlist(str(report), rules, output_path=str(output))
 
         assert 'Zone.Identifier' not in result
 
@@ -829,7 +829,7 @@ class TestConfigLoading:
 
 class TestWeakenedSecurity:
     def _other_entry(self, original: str) -> dict:
-        from frst_parser import normalize_line
+        from report_parser import normalize_line
         return {
             'section': 'other_14',
             'original': original,
