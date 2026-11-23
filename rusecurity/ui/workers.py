@@ -29,21 +29,40 @@ class ScanWorker(QThread):
     progress = Signal(str)
     finished_ok = Signal(object)
     failed = Signal(str)
+    cancelled = Signal()
 
     def __init__(self, output_dir: Path, options: ScanOptions) -> None:
         super().__init__()
         self.output_dir = output_dir
         self.options = options
+        self._cancel_requested = False
+
+    def cancel(self) -> None:
+        self._cancel_requested = True
+
+    def _emit_progress(self, message: str) -> None:
+        from ..core.context import ScanCancelled
+        if self._cancel_requested:
+            raise ScanCancelled()
+        self.progress.emit(message)
 
     def run(self) -> None:
         from .. import analyzer
+        from ..core.context import ScanCancelled
         started = datetime.now()
         began = time.monotonic()
         try:
             result = scanner.scan(self.output_dir, options=self.options,
-                                  progress=self.progress.emit)
+                                  progress=self._emit_progress,
+                                  cancel=lambda: self._cancel_requested)
+            if self._cancel_requested:
+                self.cancelled.emit()
+                return
             analysis = analyzer.analyze(result.report, result.addition,
                                         options=self.options)
+        except ScanCancelled:
+            self.cancelled.emit()
+            return
         except Exception as exc:  # noqa: BLE001 - показываем пользователю текст ошибки
             self.failed.emit(str(exc))
             return

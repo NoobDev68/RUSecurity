@@ -18,7 +18,7 @@ else:
 CONFIG_PATH = APP_DIR / 'rusecurity.json'
 REPORTS_DIR = APP_DIR / 'Reports'
 
-DONATE_URL = "https://boosty.to/threer/donate"
+DONATE_URL = "https://pay.cloudtips.ru/p/a87b504b"
 
 _DEFAULTS: Dict[str, str] = {
     'reports_dir': str(REPORTS_DIR),

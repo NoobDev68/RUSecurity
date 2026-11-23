@@ -427,6 +427,85 @@ _TRANSLATIONS: Dict[str, str] = {
     'Служба журналов событий включена': 'Event log service is enabled',
     'Автоматическое обновление не отключено': 'Automatic updates are not disabled',
     'Сервер обновлений не подменён': 'Update server is not redirected',
+
+    # --- отмена, фильтры, исключения и экспорт ----------------------------
+    'Остановить': 'Stop',
+    'Останавливаю…': 'Stopping…',
+    'Сканирование отменено.': 'Scan cancelled.',
+    'Поиск по найденному…': 'Search found items…',
+    'Все категории': 'All categories',
+    'Ничего не найдено по фильтру.': 'Nothing matches the filter.',
+    'Показано: {shown} из {total}': 'Shown: {shown} of {total}',
+    'Скрыто исключениями: {count}': 'Hidden by exclusions: {count}',
+    'Исключений: {count}, в этом скане совпадений нет':
+        'Exclusions: {count}, no matches in this scan',
+    'Все найденные элементы скрыты исключениями: {count}. '
+    'Верните их через «Исключения…».':
+        'All found items are hidden by exclusions: {count}. '
+        'Restore them via “Exclusions…”.',
+    'Исключения…': 'Exclusions…',
+    'Исключения ({count})': 'Exclusions ({count})',
+    'Посмотреть скрытые элементы и вернуть их в результаты':
+        'View hidden items and restore them to the results',
+    'Исключить выбранное': 'Exclude selected',
+    'Скрыть выбранные элементы при следующих сканированиях':
+        'Hide the selected items in future scans',
+    'Исключено: {count}': 'Excluded: {count}',
+    'Исключения': 'Exclusions',
+    'Скрытые элементы не показываются при следующих сканированиях.':
+        'Hidden items are not shown in future scans.',
+    'Снимите галочки с тех, что нужно вернуть в результаты проверки.':
+        'Clear the checkboxes of the items to restore.',
+    'Элемент': 'Item',
+    'Вернуть выбранные': 'Restore selected',
+    'Очистить всё': 'Clear all',
+    'Закрыть': 'Close',
+    'Отметьте элементы, которые нужно вернуть.':
+        'Check the items to restore.',
+    'Очистить исключения?': 'Clear exclusions?',
+    'Все скрытые элементы снова появятся в результатах.':
+        'All hidden items will appear in the results again.',
+    'Исключить из проверок': 'Exclude from checks',
+    'Открыть папку файла': 'Open file folder',
+    'Открыть в Regedit': 'Open in Regedit',
+    'Скопировать путь': 'Copy path',
+    'Скопировать строку': 'Copy line',
+    'Путь реестра сокращён в отчёте — проверьте в Regedit вручную':
+        'The registry path is shortened in the report — check it in Regedit manually',
+    'Путь не найден': 'Path not found',
+    'Папка не существует: {path}': 'The folder does not exist: {path}',
+    'Путь скопирован — вставьте его в адресную строку Regedit (Ctrl+L).':
+        'Path copied — paste it into the Regedit address bar (Ctrl+L).',
+    'Скопировано.': 'Copied.',
+    'Экспорт': 'Export',
+    'Сводка (Markdown)': 'Summary (Markdown)',
+    'Архив для поддержки (ZIP)': 'Support archive (ZIP)',
+    'Сохранить сводку': 'Save summary',
+    'Сохранить архив для поддержки': 'Save support archive',
+    'Сводка сохранена': 'Summary saved',
+    'Сводка сохранена: {path}': 'Summary saved: {path}',
+    'Архив сохранён': 'Archive saved',
+    'Архив сохранён: {path}': 'Archive saved: {path}',
+    'Не удалось сохранить сводку': 'Could not save the summary',
+    'Не удалось сохранить архив': 'Could not save the archive',
+
+    # --- предпросмотр исправления -----------------------------------------
+    'Предпросмотр исправления': 'Fix preview',
+    'Проверьте план перед применением.':
+        'Review the plan before applying.',
+    'Действие': 'Action',
+    'Объект': 'Object',
+    'Что будет сделано': 'What will be done',
+    'Будет изменено: {planned} · вручную: {manual} · не найдено: {missing}':
+        'Will be changed: {planned} · manual: {manual} · not found: {missing}',
+    'ошибок: {count}': 'errors: {count}',
+    'Применить': 'Apply',
+    'Отмена': 'Cancel',
+    'В плане нет изменений — исправлять нечего.':
+        'There are no changes in the plan — nothing to fix.',
+    'Предпросмотр не удался': 'Preview failed',
+    '{message}\n\nИсправление не запущено.':
+        '{message}\n\nThe fix was not started.',
 }
 
 

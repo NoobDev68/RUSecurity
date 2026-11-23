@@ -200,21 +200,26 @@ def build_addition(ctx: ScanContext, launcher: str,
 
 def scan(output_dir: Path, include_addition: bool = True,
          progress: Optional[Callable[[str], None]] = None,
-         options: Optional[ScanOptions] = None) -> ScanResult:
+         options: Optional[ScanOptions] = None,
+         cancel: Optional[Callable[[], bool]] = None) -> ScanResult:
     options = options or ScanOptions()
     if not include_addition:
         options = options.with_addition(False)
-    ctx = ScanContext.detect(progress=progress)
+    ctx = ScanContext.detect(progress=progress, cancel=cancel)
     launcher = str(Path(sysinfo.launcher_path()).resolve())
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    ctx.check_cancel()
     report = build_report(ctx, launcher, options)
+    ctx.check_cancel()
     report_path = report.write(output_dir / names.REPORT)
     addition_path: Optional[Path] = None
     addition_entries = 0
     if options.addition_enabled():
+        ctx.check_cancel()
         addition_report = build_addition(ctx, launcher, options)
+        ctx.check_cancel()
         addition_path = addition_report.write(output_dir / names.ADDITION)
         addition_entries = sum(len(section.lines) for section in addition_report.sections)
     else:

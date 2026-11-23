@@ -15,6 +15,9 @@ def test_translations_switch():
         i18n.set_language('en', save=False)
         assert i18n.tr('Сканирование') == 'Scanning'
         assert i18n.tr('Найдено элементов: {count}', count=3) == 'Found items: 3'
+        assert i18n.tr('Остановить') == 'Stop'
+        assert i18n.tr('Показано: {shown} из {total}', shown=1, total=2) == 'Shown: 1 of 2'
+        assert i18n.tr('Исключения ({count})', count=2) == 'Exclusions (2)'
         assert i18n.element_word(1) == 'element'
         assert i18n.element_word(2) == 'elements'
         assert i18n.decimal(1.5) == '1.5'

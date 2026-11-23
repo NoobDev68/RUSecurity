@@ -18,6 +18,7 @@ from ..core import hardening
 from ..fixer import schedule_reboot
 from . import theme
 from .pages import card, page_header
+from .preview import preview_fix
 from .workers import FixWorker, HardeningWorker
 
 _COLUMNS = ('', 'Раздел', 'Проверка', 'Сейчас', 'Должно быть', 'Важность')
@@ -413,27 +414,21 @@ class HardeningPage(QWidget):
                 i18n.tr('Выбранные отклонения исправляются только вручную.'))
             return
         total = hardening.counts(selected)
-        box = QMessageBox(self)
-        box.setWindowTitle(i18n.tr('Исправить выбранное?'))
-        box.setIcon(QMessageBox.Icon.Warning)
-        box.setText(i18n.tr('Будут изменены параметры безопасности системы.'))
-        informative = i18n.tr(
+        intro = i18n.tr('Будут изменены параметры безопасности системы.')
+        intro += '\n\n' + i18n.tr(
             'Отклонений выбрано: {count} (высокая {high}, средняя {medium}, '
             'низкая {low}).',
             count=len(selected), high=total[hardening.ISSUE_HIGH],
             medium=total[hardening.ISSUE_MEDIUM], low=total[hardening.ISSUE_LOW])
-        informative += '\n\n' + i18n.tr(
+        intro += '\n\n' + i18n.tr(
             'Перед изменениями создаются точка восстановления и резервные копии '
             'веток реестра, поэтому исправление обратимо.')
+        note = ''
         if hardening.needs_reboot(selected):
-            informative += '\n\n' + i18n.tr(
+            note = i18n.tr(
                 'Часть изменений вступит в силу после перезагрузки — '
                 'программа предложит её.')
-        box.setInformativeText(informative)
-        box.setStandardButtons(QMessageBox.StandardButton.Yes |
-                               QMessageBox.StandardButton.No)
-        box.setDefaultButton(QMessageBox.StandardButton.No)
-        if box.exec() != QMessageBox.StandardButton.Yes:
+        if not preview_fix(self, text, intro, note):
             return
 
         target = config.reports_dir(config.load()) / names.FIXLIST

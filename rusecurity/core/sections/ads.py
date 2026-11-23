@@ -128,6 +128,7 @@ def collect(ctx: ScanContext) -> List[str]:
     lines: List[str] = []
     for folder in _scope(ctx):
         for path in _iter_files(folder, started):
+            ctx.check_cancel()
             for name, size in _streams(path):
                 lines.append(f'AlternateDataStreams: {path}:{name} [{size}]')
             if time.monotonic() - started > _TIME_BUDGET:
