@@ -20,6 +20,7 @@
 [**Я на Boosty**](https://boosty.to/threer)
 
 ![Логотип RUSecurity](assets/rusecurity-logo.png)
+<img width="1182" height="708" alt="image" src="https://github.com/user-attachments/assets/c5462ce9-5d73-41a3-9fbf-e33144343b13" />
 
 ## Возможности
 
