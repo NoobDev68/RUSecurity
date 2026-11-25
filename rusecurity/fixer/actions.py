@@ -16,12 +16,18 @@ FIREWALL = 'firewall'            # удалить правило брандма�
 SECURITY_PROVIDER = 'security_provider'  # мёртвая запись AV/FW
 SHORTCUT = 'shortcut'            # удалить .lnk по пути
 SHORTCUT_TARGET = 'shortcut_target'  # найти .lnk по имени в Startup
+SHORTCUT_CLEAN = 'shortcut_clean'    # перезаписать .lnk без лишнего URL
+PROCESS_KILL = 'process_kill'        # завершить процесс и убрать файл
+BITS_CANCEL = 'bits_cancel'          # отменить BITS-задание
+WEB_DATA = 'web_data'                # удалить поисковый движок из Web Data
+SERVICE_QUOTE = 'service_quote'      # взять ImagePath службы в кавычки
 FILE = 'file'                    # файл или папка
 ADS = 'ads'                      # альтернативный поток
 HOSTS = 'hosts'                  # сброс hosts
 BROWSER = 'browser'              # поиск/домашняя страница в профиле браузера
 EXTENSION = 'extension'          # расширение Chromium: папка и запись в профиле
 EMPTY_TEMP = 'empty_temp'
+BROWSER_CACHE = 'browser_cache'
 EXPORT_KEY = 'export_key'
 RESTORE_POINT = 'restore_point'
 REBOOT = 'reboot'
@@ -39,12 +45,18 @@ KIND_LABELS = {
     SECURITY_PROVIDER: 'записи Центра безопасности',
     SHORTCUT: 'ярлыки',
     SHORTCUT_TARGET: 'ярлыки автозагрузки',
+    SHORTCUT_CLEAN: 'ярлыки браузеров',
+    PROCESS_KILL: 'процессы',
+    BITS_CANCEL: 'BITS-задания',
+    WEB_DATA: 'поисковые движки',
+    SERVICE_QUOTE: 'пути служб',
     FILE: 'файлы и папки',
     ADS: 'альтернативные потоки',
     HOSTS: 'hosts',
     BROWSER: 'настройки браузера',
     EXTENSION: 'расширения',
     EMPTY_TEMP: 'очистка Temp',
+    BROWSER_CACHE: 'кэш и куки браузеров',
     EXPORT_KEY: 'экспорт веток',
     RESTORE_POINT: 'точка восстановления',
     REBOOT: 'перезагрузка',
@@ -127,10 +139,48 @@ def _parse_line(line: str) -> Action:
         return Action(RESTORE_POINT, line)
     if low == 'emptytemp:':
         return Action(EMPTY_TEMP, line)
+    if low == 'clearbrowsercache:':
+        return Action(BROWSER_CACHE, line)
     if low == 'reboot:':
         return Action(REBOOT, line)
     if low == 'closeprocesses:':
         return Action(CLOSE_PROCESSES, line)
+    if low.startswith('regkey:'):
+        path = line.split(':', 1)[1].strip()
+        if path:
+            return Action(REG_KEY, line, path=path)
+        return Action(MANUAL, line, manual_reason='пустой путь ключа реестра')
+    if low.startswith('processkill:'):
+        payload = line.split(':', 1)[1].strip()
+        pid, _, path = payload.partition('|')
+        if pid.strip() and path.strip():
+            return Action(PROCESS_KILL, line, name=pid.strip(),
+                          path=path.strip())
+        return Action(MANUAL, line, manual_reason='не разобрать процесс')
+    if low.startswith('bitscancel:'):
+        name = line.split(':', 1)[1].strip()
+        if name:
+            return Action(BITS_CANCEL, line, name=name)
+        return Action(MANUAL, line, manual_reason='пустое имя BITS-задания')
+    if low.startswith('webdata:'):
+        parts = [part.strip() for part in line.split(':', 1)[1].split('|', 3)]
+        if len(parts) >= 3 and parts[1] and parts[2]:
+            return Action(WEB_DATA, line, browser=parts[0], path=parts[1],
+                          name=parts[2], target=parts[3] if len(parts) > 3 else '')
+        return Action(MANUAL, line, manual_reason='не разобрать Web Data')
+    if low.startswith('servicequote:'):
+        payload = line.split(':', 1)[1]
+        key, _, quoted = payload.partition('->')
+        if key.strip() and quoted.strip():
+            return Action(SERVICE_QUOTE, line, path=key.strip(),
+                          value=quoted.strip())
+        return Action(MANUAL, line, manual_reason='не разобрать ImagePath')
+    if low.startswith('shortcutclean:'):
+        parts = [part.strip() for part in line.split(':', 1)[1].split('->', 2)]
+        if len(parts) >= 2 and parts[0] and parts[1]:
+            return Action(SHORTCUT_CLEAN, line, path=parts[0],
+                          target=parts[1], value=parts[2] if len(parts) > 2 else '')
+        return Action(MANUAL, line, manual_reason='не разобрать ярлык')
     if low == 'hosts:':
         return Action(HOSTS, line)
     if low.startswith('exportkey:'):

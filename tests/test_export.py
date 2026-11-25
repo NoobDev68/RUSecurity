@@ -31,6 +31,14 @@ def test_exclusions_bad_json_is_empty(tmp_path):
     assert exclusions.load(tmp_path) == []
 
 
+def test_exclusions_wildcard_matches(tmp_path):
+    exclusions.add(tmp_path, ['*4pda*', 'DNS: *'])
+    items = exclusions.load(tmp_path)
+    assert exclusions.contains(items, 'Edge: Новости 4pda — http://4pda.ru')
+    assert exclusions.contains(items, 'DNS: 8.8.8.8')
+    assert not exclusions.contains(items, 'Входящее правило: pythonw.exe')
+
+
 def test_summary_markdown_has_findings_and_hidden(tmp_path):
     report = tmp_path / names.REPORT
     report.write_text('x', encoding='utf-8')

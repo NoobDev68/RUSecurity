@@ -112,7 +112,8 @@ def test_directives_are_read_from_analysis():
             'C:\\Windows\\Temp\\bad.exe\nEnd::\n')
     assert analyzer.directives(text) == {'restore_point': True,
                                          'close_processes': True,
-                                         'empty_temp': True, 'reboot': False}
+                                         'empty_temp': True, 'reboot': False,
+                                         'browser_cache': False}
 
 
 def test_close_processes_not_recommended_without_files():

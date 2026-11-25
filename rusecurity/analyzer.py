@@ -10,7 +10,7 @@ from typing import Dict, List, Optional
 import GenFix
 from report_parser import is_boilerplate_action
 
-from . import names
+from . import deep, names
 from .fixer import actions as act
 
 # Категории fixlist (комментарии GenFix) → подписи для интерфейса
@@ -33,15 +33,17 @@ _SECTION_LABELS: Dict[str, str] = {
     'Files / Folders': 'Файлы',
 }
 
-_DIRECTIVES = ('restore_point', 'close_processes', 'empty_temp', 'reboot')
+_DIRECTIVES = ('restore_point', 'close_processes', 'empty_temp', 'browser_cache',
+               'reboot')
 _DIRECTIVE_LINES = {
     'restore_point': 'createrestorepoint:',
     'close_processes': 'closeprocesses:',
     'empty_temp': 'emptytemp:',
+    'browser_cache': 'clearbrowsercache:',
     'reboot': 'reboot:',
 }
 _SKIP_KINDS = {act.NOOP, act.CLOSE_PROCESSES, act.RESTORE_POINT, act.REBOOT,
-               act.EMPTY_TEMP, act.EXPORT_KEY}
+               act.EMPTY_TEMP, act.BROWSER_CACHE, act.EXPORT_KEY}
 
 
 @dataclass
@@ -54,6 +56,10 @@ class Finding:
     kind_label: str
     manual: bool = False
     note: str = ''
+    fix: str = ''
+    # Входит в набор «Рекомендовано»: проверка уверенно указывает на проблему.
+    # Находки GenFix рекомендуются по умолчанию, тщательный скан решает сам.
+    recommended: bool = True
 
 
 @dataclass
@@ -64,6 +70,7 @@ class AnalysisResult:
     actions: List[str] = field(default_factory=list)
     findings: List[Finding] = field(default_factory=list)
     directives: Dict[str, bool] = field(default_factory=dict)
+    deep_count: int = 0
 
 
 class _Collector(logging.Handler):
@@ -80,7 +87,8 @@ class _Collector(logging.Handler):
 
 def analyze(report_path: Path, addition_path: Optional[Path] = None,
             output_path: Optional[Path] = None,
-            options: Optional['ScanOptions'] = None) -> AnalysisResult:
+            options: Optional['ScanOptions'] = None,
+            deep_path: Optional[Path] = None) -> AnalysisResult:
     """Разобрать отчёты и вернуть текст fixlist. Пустой текст — автодействий нет."""
     collector = _Collector()
     logger = logging.getLogger('generate_fixlist')
@@ -94,11 +102,85 @@ def analyze(report_path: Path, addition_path: Optional[Path] = None,
     finally:
         logger.removeHandler(collector)
     text = text or ''
-    actions = [line for line in parse_fixlist_text(text) if not is_boilerplate_action(line)]
+    deep_items: List[deep.DeepItem] = []
+    if options is not None and getattr(options, 'deep', False):
+        try:
+            report_text = Path(report_path).read_text(encoding='utf-8',
+                                                      errors='replace')
+        except OSError:
+            report_text = ''
+        deep_items.extend(deep.analyze_report(report_text))
+    if deep_path:
+        deep_items.extend(deep.load(Path(deep_path), Path(report_path)))
     items = _filter_findings(findings(text), options)
+    items = _merge_deep_findings(items, deep_items)
+    fix_lines = [item.fix_line for item in deep_items if item.fix_line]
+    text = _merge_deep_fixlist(text, fix_lines)
+    actions = [line for line in parse_fixlist_text(text)
+               if not is_boilerplate_action(line)]
     return AnalysisResult(text=text, fix_count=len(actions), entries=_entry_count(collector),
                           actions=actions, findings=items,
-                          directives=directives(text))
+                          directives=directives(text),
+                          deep_count=len(deep_items))
+
+
+def _merge_deep_findings(items: List[Finding],
+                         deep_items: List[deep.DeepItem]) -> List[Finding]:
+    seen = {_norm(finding.text) for finding in items}
+    seen_fixes = {_norm(finding.fix) for finding in items if finding.fix}
+    result = list(items)
+    for item in deep_items:
+        if not item.fix_line and _norm(item.title) in seen:
+            continue
+        if item.fix_line and _norm(item.fix_line) in seen_fixes:
+            continue
+        if _norm(item.title) in seen:
+            continue
+        result.append(Finding(
+            category=item.category,
+            text=item.title,
+            kind=item.kind or act.MANUAL,
+            kind_label=act.KIND_LABELS.get(item.kind, 'только вручную'),
+            manual=not bool(item.fix_line),
+            note=item.evidence,
+            fix=item.fix_line,
+            recommended=item.recommended,
+        ))
+        seen.add(_norm(item.title))
+        if item.fix_line:
+            seen_fixes.add(_norm(item.fix_line))
+    return result
+
+
+def _merge_deep_fixlist(text: str, lines: List[str]) -> str:
+    existing = {_norm(line) for line in parse_fixlist_text(text)}
+    extra = []
+    for line in lines:
+        key = _norm(line)
+        if key and key not in existing:
+            extra.append(line)
+            existing.add(key)
+    if not extra:
+        return text
+    if not text.strip():
+        header = ['Start::', 'CloseProcesses:', 'SystemRestore: On',
+                  'CreateRestorePoint:', '; ---- Тщательная проверка ----']
+        return '\n'.join(header + extra + ['End::']) + '\n'
+    result = text.rstrip().splitlines()
+    index = len(result)
+    for position in range(len(result) - 1, -1, -1):
+        if result[position].strip() == 'End::':
+            index = position
+            break
+    for position, line in enumerate(result):
+        if line.strip().lower() in ('emptytemp:', 'reboot:'):
+            index = min(index, position)
+    result[index:index] = ['; ---- Тщательная проверка ----'] + extra
+    return '\n'.join(result) + '\n'
+
+
+def _norm(text: str) -> str:
+    return ' '.join(str(text).split())
 
 
 def _filter_findings(items: List[Finding],
@@ -176,7 +258,7 @@ def directives(text: str) -> Dict[str, bool]:
 
 def compose_fixlist(selected: List[str], restore_point: bool = True,
                     close_processes: bool = True, empty_temp: bool = False,
-                    reboot: bool = False) -> str:
+                    browser_cache: bool = False, reboot: bool = False) -> str:
     """Собрать fixlist из выбранных элементов и директив."""
     lines = ['Start::']
     if close_processes:
@@ -187,6 +269,8 @@ def compose_fixlist(selected: List[str], restore_point: bool = True,
     lines.extend(selected)
     if empty_temp:
         lines.append('EmptyTemp:')
+    if browser_cache:
+        lines.append('ClearBrowserCache:')
     if reboot:
         lines.append('Reboot:')
     lines.append('End::')

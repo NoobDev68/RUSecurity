@@ -63,6 +63,9 @@ _PS_POLICY = r'SOFTWARE\Policies\Microsoft\Windows\PowerShell'
 _WU = r'SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate'
 _DNSCLIENT = r'SOFTWARE\Policies\Microsoft\Windows NT\DNSClient'
 _DEFENDER = r'SOFTWARE\Microsoft\Windows Defender'
+_DEFENDER_POLICY = r'SOFTWARE\Policies\Microsoft\Windows Defender'
+_ASR_RULES = (_DEFENDER_POLICY
+              + r'\Windows Defender Exploit Guard\ASR\Rules')
 
 _SECURITY_LOG_MIN_BYTES = 20971520  # 20 МБ — размер журнала Security по умолчанию
 
@@ -188,6 +191,28 @@ RULES: Tuple[Rule, ...] = (
        command=r"Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa"
                r"\MSV1_0' -Name RestrictSendingNTLMTraffic -Value 2 "
                r"-Type DWord"),
+    _r('ntlm_restrict_receive', SEC_CREDENTIALS, _LSA + r'\MSV1_0',
+       'RestrictReceivingNTLMTraffic', 'Ограничение входящего NTLM',
+       '>=', 1, severity=ISSUE_LOW, missing='bad',
+       expect_label='не менее 1', recommended=False,
+       note='Без ограничения компьютер принимает NTLM-аутентификацию, '
+            'уязвимую к перехвату и relay-атакам.',
+       risk='Значение 2 запрещает весь входящий NTLM: доступ с устройств, '
+            'использующих NTLM, пропадёт — включайте осознанно. Уровень 1 '
+            'только включает аудит и ничего не ломает.',
+       how_to='secpol.msc → Локальные политики → Параметры безопасности → '
+              '«Сетевая безопасность: ограничить NTLM: входящий трафик NTLM» → '
+              '«Аудит входящего трафика NTLM» или «Отклонить все учётные записи».',
+       command=r"Set-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Lsa"
+               r"\MSV1_0' -Name RestrictReceivingNTLMTraffic -Value 2 "
+               r"-Type DWord"),
+    _r('ntlm_audit_receive', SEC_CREDENTIALS, _LSA + r'\MSV1_0',
+       'AuditReceivingNTLMTraffic', 'Журнал входящего NTLM', '==', 1, '1',
+       ISSUE_MEDIUM, missing='bad',
+       note='Без аудита не видно попыток NTLM-аутентификации — нельзя заметить '
+            'перебор пароля и relay-атаки.',
+       risk='В журнале событий появятся записи о NTLM-аутентификации; на '
+            'загруженных машинах их может быть много.'),
 
     # --- удалённый доступ -------------------------------------------------
     # report-only: RDP выключить автоматически нельзя — это решение пользователя
@@ -324,6 +349,48 @@ RULES: Tuple[Rule, ...] = (
               'местонахождение службы обновлений» → «Не задана».',
        command=r"Remove-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows"
                r"\WindowsUpdate' -Name WUServer -ErrorAction SilentlyContinue"),
+
+    # --- Defender: PUA и правила сокращения направлений атак (ASR) ---------
+    _r('defender_pua', SEC_OTHER, _DEFENDER_POLICY, 'PUAProtection',
+       'Защита Defender от нежелательных программ (PUA)', '==', 1, '1',
+       ISSUE_MEDIUM, missing='bad',
+       note='PUA — рекламные, шпионские и навязываемые программы, которые '
+            'ставятся вместе с нужным ПО и не попадают в категорию «вирусы».',
+       risk='Defender начнёт блокировать и помечать нежелательные программы, '
+            'включая бандлы и рекламные утилиты; часть доверенных, но «серых» '
+            'программ может перестать запускаться.'),
+    _r('asr_lsass', SEC_OTHER, _ASR_RULES,
+       '01443614-cd74-433a-b99e-2ecdc07bfc25',
+       'ASR: защита LSASS от кражи учётных данных', '==', 1, '1',
+       ISSUE_MEDIUM, missing='bad',
+       note='Блокирует чтение памяти LSASS (Mimikatz) посторонними процессами.',
+       risk='Сторонние антивирусы, средства резервного копирования и агенты, '
+            'которые читают LSASS, могут перестать работать; правило можно '
+            'отключить для совместимости.'),
+    _r('asr_wmi', SEC_OTHER, _ASR_RULES,
+       'e6db77e5-3df2-4cf1-b95d-636979351e5b',
+       'ASR: блокировка персистентности через WMI', '==', 1, '1',
+       ISSUE_MEDIUM, missing='bad',
+       note='Блокирует создание WMI-подписок (EventConsumer), через которые '
+            'вредоносное ПО закрепляется без файлов.',
+       risk='Легитимные программы, использующие WMI-подписки (мониторинг, '
+            'корпоративные агенты), могут перестать создавать подписки.'),
+    _r('asr_drivers', SEC_OTHER, _ASR_RULES,
+       '56a863a9-875e-4185-98a7-b882c64b5ce5',
+       'ASR: блокировка уязвимых подписанных драйверов', '==', 1, '1',
+       ISSUE_MEDIUM, missing='bad', recommended=False,
+       note='Блокирует известные уязвимые драйверы, которыми пользуются '
+            'руткиты (BYOVD-атаки).',
+       risk='Старые драйверы и периферия (звук, USB-устройства, эмуляторы), '
+            'попавшие в список блокировки, могут перестать работать.'),
+    _r('asr_obfuscation', SEC_OTHER, _ASR_RULES,
+       '5beb7efe-fd9a-4556-801d-275e5ffc04cc',
+       'ASR: блокировка обфусцированного кода', '==', 1, '1',
+       ISSUE_MEDIUM, missing='bad', recommended=False,
+       note='Блокирует запуск потенциально обфусцированных скриптов, которыми '
+            'часто прикрывается вредоносный код.',
+       risk='Легитимные обфусцированные скрипты (инсталляторы, скрипты '
+            'развёртывания) могут быть заблокированы.'),
 )
 
 _RULES_BY_ID: Dict[str, Rule] = {rule.id: rule for rule in RULES}

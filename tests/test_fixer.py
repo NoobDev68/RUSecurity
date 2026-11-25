@@ -25,6 +25,29 @@ def test_parse_directives():
         act.EMPTY_TEMP, act.REBOOT, act.HOSTS]
 
 
+def test_empty_temp_clears_only_temp_folders(tmp_path, monkeypatch):
+    from rusecurity.fixer import execute
+
+    folder = tmp_path / 'Temp'
+    folder.mkdir()
+    (folder / 'installer.tmp').write_text('x', encoding='utf-8')
+    nested = folder / 'nested'
+    nested.mkdir()
+    (nested / 'inner.txt').write_text('y', encoding='utf-8')
+    cookies = tmp_path / 'Cookies'
+    cookies.mkdir()
+    (cookies / 'cookies.db').write_text('z', encoding='utf-8')
+
+    monkeypatch.setattr(execute, '_TEMP_DIRS', (str(folder),))
+    report = execute.Fixer(tmp_path / 'backup', tmp_path / 'log.txt',
+                           create_restore_point=False).run(
+        'Start::\nEmptyTemp:\nEnd::\n')
+    assert report.changed >= 1
+    assert not (folder / 'installer.tmp').exists()
+    assert not nested.exists()
+    assert (cookies / 'cookies.db').exists()
+
+
 def test_parse_registry_value_and_key():
     actions = parse_fixlist(
         r'HKLM\...\Run: [Bad] => C:\x.exe (Нет файла)' '\n'

@@ -114,3 +114,40 @@ def test_browser_fix_reports_missing_profile(tmp_path, monkeypatch):
                   create_restore_point=False)
     report = fixer.run('CHR HomePage: NoProfile -> hxxp://evil/')
     assert [outcome.status for outcome in report.outcomes] == ['not_found']
+
+
+def test_clear_browser_cache_and_cookies(tmp_path, monkeypatch):
+    local = tmp_path / 'Local'
+    profile = local / r'Google\Chrome\User Data\Default'
+    (profile / 'Cache').mkdir(parents=True)
+    (profile / 'Cache' / 'data').write_text('x', encoding='utf-8')
+    (profile / 'Code Cache').mkdir()
+    (profile / 'Cookies').write_text('cookie', encoding='utf-8')
+    (profile / 'Network').mkdir()
+    (profile / 'Network' / 'Cookies').write_text('netcookie', encoding='utf-8')
+    (profile / 'Preferences').write_text('{}', encoding='utf-8')
+    appdata = tmp_path / 'Roaming'
+    firefox = appdata / r'Mozilla\Firefox\Profiles\test.default'
+    (firefox / 'cache2').mkdir(parents=True)
+    (firefox / 'cache2' / 'entry').write_text('y', encoding='utf-8')
+    (firefox / 'cookies.sqlite').write_text('ffcookie', encoding='utf-8')
+    (firefox / 'prefs.js').write_text('//', encoding='utf-8')
+
+    monkeypatch.setenv('LOCALAPPDATA', str(local))
+    monkeypatch.setenv('APPDATA', str(appdata))
+    monkeypatch.setattr(browsers, '_close_all', lambda: [])
+
+    removed = browsers.clear_cache_and_cookies()
+    assert removed >= 5
+    assert not (profile / 'Cache').exists()
+    assert not (profile / 'Cookies').exists()
+    assert not (profile / 'Network' / 'Cookies').exists()
+    assert (profile / 'Preferences').exists()
+    assert not (firefox / 'cache2').exists()
+    assert not (firefox / 'cookies.sqlite').exists()
+    assert (firefox / 'prefs.js').exists()
+
+
+def test_clear_browser_cache_line_parses():
+    [action] = actions.parse_fixlist('ClearBrowserCache:')
+    assert action.kind == actions.BROWSER_CACHE

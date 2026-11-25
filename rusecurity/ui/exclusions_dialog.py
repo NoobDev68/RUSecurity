@@ -6,8 +6,9 @@ from typing import Iterable, List
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QAbstractItemView, QDialog, QDialogButtonBox, QHeaderView, QLabel, QMessageBox,
-    QTableWidget, QTableWidgetItem, QVBoxLayout,
+    QAbstractItemView, QDialog, QDialogButtonBox, QHBoxLayout, QHeaderView,
+    QLabel, QLineEdit, QMessageBox, QPushButton, QTableWidget, QTableWidgetItem,
+    QVBoxLayout,
 )
 
 from .. import i18n
@@ -22,6 +23,7 @@ class ExclusionsDialog(QDialog):
         self.resize(760, 420)
         self._items = list(items)
         self.removed: List[str] = []
+        self.added: List[str] = []
         self.clear_all = False
 
         layout = QVBoxLayout(self)
@@ -56,6 +58,17 @@ class ExclusionsDialog(QDialog):
         self._table.resizeRowsToContents()
         layout.addWidget(self._table, 1)
 
+        add_row = QHBoxLayout()
+        self._add = QLineEdit()
+        self._add.setPlaceholderText(i18n.tr('Добавить маску, например *реклама*'))
+        self._add.returnPressed.connect(self._accept_add)
+        add_btn = QPushButton('Добавить')
+        add_btn.setObjectName('Secondary')
+        add_btn.clicked.connect(self._accept_add)
+        add_row.addWidget(self._add, 1)
+        add_row.addWidget(add_btn)
+        layout.addLayout(add_row)
+
         buttons = QDialogButtonBox()
         self._remove = buttons.addButton(
             i18n.tr('Вернуть выбранные'), QDialogButtonBox.ButtonRole.AcceptRole)
@@ -77,6 +90,23 @@ class ExclusionsDialog(QDialog):
             if item is not None and item.checkState() == Qt.CheckState.Checked:
                 result.append(text)
         return result
+
+    def _accept_add(self) -> None:
+        text = self._add.text().strip()
+        if not text:
+            return
+        if text not in self._items:
+            self._items.append(text)
+            self.added.append(text)
+            row = self._table.rowCount()
+            self._table.insertRow(row)
+            item = QTableWidgetItem(text)
+            item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable |
+                          Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Unchecked)
+            item.setToolTip(text)
+            self._table.setItem(row, 0, item)
+        self._add.clear()
 
     def _accept_remove(self) -> None:
         self.removed = self._checked()

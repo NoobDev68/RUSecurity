@@ -12,10 +12,11 @@ from PySide6.QtWidgets import (
 from .. import __version__, config, i18n, names
 from ..journal import Journal
 from .hardening_page import HardeningPage
-from .pages import LogPage, ScanPage
+from .pages import LogPage, RestorePage, ScanPage
 from .quarantine_page import QuarantinePage
 
-_NAV_TITLES = ('Сканирование', 'Проверка безопасности', 'Карантин', 'Журнал')
+_NAV_TITLES = ('Сканирование', 'Проверка безопасности', 'Карантин',
+               'Откат исправлений', 'Журнал')
 
 
 class MainWindow(QMainWindow):
@@ -50,8 +51,9 @@ class MainWindow(QMainWindow):
         self.scan_page = ScanPage(self.append_log)
         self.hardening_page = HardeningPage(self.append_log)
         self.quarantine_page = QuarantinePage(self.append_log)
+        self.restore_page = RestorePage(self.append_log)
         for page in (self.scan_page, self.hardening_page,
-                     self.quarantine_page, self.log_page):
+                     self.quarantine_page, self.restore_page, self.log_page):
             self.pages.addWidget(page)
         layout.addWidget(self.pages, 1)
         self.setCentralWidget(central)
@@ -131,7 +133,7 @@ class MainWindow(QMainWindow):
 
     def pages_busy(self) -> bool:
         for page in (self.scan_page, self.hardening_page,
-                     self.quarantine_page, self.log_page):
+                     self.quarantine_page, self.restore_page, self.log_page):
             for method in ('_running', '_busy'):
                 check = getattr(page, method, None)
                 if callable(check) and check():

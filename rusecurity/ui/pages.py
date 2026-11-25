@@ -40,14 +40,6 @@ _STATUS_RU = {
 }
 
 
-def _plural(count: int, one: str, few: str, many: str) -> str:
-    if count % 10 == 1 and count % 100 != 11:
-        return one
-    if 2 <= count % 10 <= 4 and not 12 <= count % 100 <= 14:
-        return few
-    return many
-
-
 def card() -> Tuple[QFrame, QVBoxLayout]:
     frame = QFrame()
     frame.setObjectName('Card')
@@ -134,6 +126,25 @@ class ScanPage(QWidget):
         title_row.addStretch(1)
         options_layout.addLayout(title_row)
         options_layout.addLayout(self._build_options())
+        self._deep = QCheckBox('Тщательное сканирование')
+        self._deep.setObjectName('Deep')
+        self._deep.setToolTip(i18n.tr(
+            'Дополнительные проверки: COM-перехват, политики браузеров, '
+            'ярлыки, SvcHost, устаревшая автозагрузка, LSA, модули процессов, '
+            'брандмауэр, сеть, WMI-подписки, переменные окружения и все задачи. '
+            'Скан дольше.'))
+        options_layout.addWidget(self._deep)
+        deep_hint = QLabel(i18n.tr(
+            'Включите тщательное сканирование для проверки COM-перехватов, '
+            'политик браузеров, ярлыков, SvcHost, процессов, BITS, расширений '
+            'оболочки, свежих файлов, путей служб, поисковых движков, '
+            'Native Messaging, устаревших точек автозагрузки, LSA, двоичных '
+            'файлов служб, модулей процессов, правил брандмауэра, портов, '
+            'маршрутов, WMI-подписок, переменных окружения, корней дисков и '
+            'всех задач.'))
+        deep_hint.setObjectName('Muted')
+        deep_hint.setWordWrap(True)
+        options_layout.addWidget(deep_hint)
         self._privileges = QLabel('')
         self._privileges.setObjectName('Muted')
         self._privileges.setWordWrap(True)
@@ -217,8 +228,8 @@ class ScanPage(QWidget):
     def _build_results(self) -> QWidget:
         view = QWidget()
         layout = QVBoxLayout(view)
-        layout.setContentsMargins(34, 30, 34, 30)
-        layout.setSpacing(14)
+        layout.setContentsMargins(34, 26, 34, 20)
+        layout.setSpacing(12)
 
         header = QHBoxLayout()
         header.addWidget(page_header(
@@ -263,33 +274,33 @@ class ScanPage(QWidget):
         self._search = QLineEdit()
         self._search.setPlaceholderText(i18n.tr('Поиск по найденному…'))
         self._search.setClearButtonEnabled(True)
+        self._search.setFixedWidth(260)
         self._search.textChanged.connect(self._apply_filter)
         self._category = QComboBox()
         self._category.addItem(i18n.tr('Все категории'), None)
         self._category.currentIndexChanged.connect(self._apply_filter)
         self._filter_info = QLabel('')
         self._filter_info.setObjectName('Muted')
-        filters.addWidget(self._search, 1)
+        filters.addWidget(self._search)
         filters.addWidget(self._category)
         filters.addWidget(self._filter_info)
-        layout.addLayout(filters)
-        self._no_matches = QLabel(i18n.tr('Ничего не найдено по фильтру.'))
-        self._no_matches.setObjectName('Muted')
-        self._no_matches.setVisible(False)
-        layout.addWidget(self._no_matches)
-
-        excluded_row = QHBoxLayout()
-        self._excluded_label = QLabel('')
-        self._excluded_label.setObjectName('Muted')
-        self._excluded_label.setWordWrap(True)
+        filters.addStretch(1)
         self._excluded_manage = QPushButton('Исключения…')
         self._excluded_manage.setObjectName('Secondary')
         self._excluded_manage.setToolTip(i18n.tr(
             'Посмотреть скрытые элементы и вернуть их в результаты'))
         self._excluded_manage.clicked.connect(self.manage_exclusions)
-        excluded_row.addWidget(self._excluded_label, 1)
-        excluded_row.addWidget(self._excluded_manage)
-        layout.addLayout(excluded_row)
+        filters.addWidget(self._excluded_manage)
+        layout.addLayout(filters)
+        self._excluded_label = QLabel('')
+        self._excluded_label.setObjectName('Muted')
+        self._excluded_label.setWordWrap(True)
+        self._excluded_label.setVisible(False)
+        layout.addWidget(self._excluded_label)
+        self._no_matches = QLabel(i18n.tr('Ничего не найдено по фильтру.'))
+        self._no_matches.setObjectName('Muted')
+        self._no_matches.setVisible(False)
+        layout.addWidget(self._no_matches)
 
         self._empty_card, empty_layout = card()
         self._empty_card.setSizePolicy(QSizePolicy.Policy.Preferred,
@@ -309,6 +320,7 @@ class ScanPage(QWidget):
         layout.addWidget(self._empty_card)
 
         self._table = QTableWidget(0, 4)
+        self._table.setObjectName('Results')
         self._table.setHorizontalHeaderLabels(['', 'Категория', 'Действие', 'Элемент'])
         self._table.verticalHeader().setVisible(False)
         self._table.setAlternatingRowColors(True)
@@ -319,7 +331,7 @@ class ScanPage(QWidget):
         header_view.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         header_view.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
         header_view.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        self._table.verticalHeader().setDefaultSectionSize(30)
+        self._table.verticalHeader().setDefaultSectionSize(24)
         self._table.setWordWrap(True)
         self._table.setMinimumHeight(220)
         self._table.itemChanged.connect(self._update_fix_state)
@@ -340,9 +352,13 @@ class ScanPage(QWidget):
         self._reboot.setToolTip(
             'Reboot: перезагрузить систему после исправления (службы и драйверы).')
         self._empty_temp = QCheckBox('Очистить временные файлы')
-        self._empty_temp.setToolTip(
-            'EmptyTemp: очистить временные файлы и кэши '
-            '(нужно после браузерных исправлений).')
+        self._empty_temp.setToolTip(i18n.tr(
+            'EmptyTemp: удалить содержимое папок Temp (%TEMP%, %TMP%, '
+            'C:\\Windows\\Temp). Куки и профили браузеров не затрагиваются.'))
+        self._browser_cache = QCheckBox('Очистить кэш и куки браузеров')
+        self._browser_cache.setToolTip(i18n.tr(
+            'ClearBrowserCache: удалить кэш и куки Chrome, Edge, Brave, Yandex '
+            'и Firefox. Вы выйдете из всех аккаунтов на сайтах.'))
         self._close_processes = QCheckBox('Закрыть блокирующие процессы')
         self._close_processes.setToolTip(
             'CloseProcesses: завершить только процессы, чьи файлы выбраны к удалению '
@@ -352,9 +368,10 @@ class ScanPage(QWidget):
                              Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         directives.addWidget(self._restore_point, 0, 1)
         directives.addWidget(self._empty_temp, 0, 2)
+        directives.addWidget(self._browser_cache, 0, 3)
         directives.addWidget(self._close_processes, 1, 1)
         directives.addWidget(self._reboot, 1, 2)
-        directives.setColumnStretch(3, 1)
+        directives.setColumnStretch(4, 1)
         self._directives_holder = QWidget()
         self._directives_holder.setLayout(directives)
         self._directives_holder.setSizePolicy(QSizePolicy.Policy.Preferred,
@@ -365,9 +382,19 @@ class ScanPage(QWidget):
         actions.setSpacing(14)
         self._recommend = QPushButton('Рекомендовано')
         self._recommend.setObjectName('Secondary')
-        self._recommend.setToolTip(
-            'Отметить найденные элементы и включить нужные директивы по анализу')
+        self._recommend.setToolTip(i18n.tr(
+            'Отметить рекомендованные элементы и включить нужные директивы '
+            'по анализу. Остальные элементы остаются на ваше усмотрение.'))
         self._recommend.clicked.connect(self.recommend)
+        self._mark_all = QPushButton('Отметить всё')
+        self._mark_all.setObjectName('Secondary')
+        self._mark_all.setToolTip(i18n.tr(
+            'Отметить все элементы, которые исправляются автоматически'))
+        self._mark_all.clicked.connect(self.mark_all)
+        self._unmark_all = QPushButton('Снять всё')
+        self._unmark_all.setObjectName('Secondary')
+        self._unmark_all.setToolTip(i18n.tr('Снять галочки со всех элементов'))
+        self._unmark_all.clicked.connect(self.unmark_all)
         self._exclude = QPushButton('Исключить выбранное')
         self._exclude.setObjectName('Secondary')
         self._exclude.setEnabled(False)
@@ -386,6 +413,8 @@ class ScanPage(QWidget):
         self._fix.setEnabled(False)
         self._fix.clicked.connect(self.start_fix)
         actions.addWidget(self._recommend)
+        actions.addWidget(self._mark_all)
+        actions.addWidget(self._unmark_all)
         actions.addWidget(self._exclude)
         actions.addWidget(self._result_progress, 1)
         actions.addWidget(self._result_status, 1)
@@ -400,11 +429,17 @@ class ScanPage(QWidget):
         self._results_hint.setWordWrap(True)
         self._results_hint.setSizePolicy(QSizePolicy.Policy.Preferred,
                                          QSizePolicy.Policy.Maximum)
+        self._results_hint.setVisible(False)
         layout.addWidget(self._results_hint)
         self._empty_spacer = QSpacerItem(0, 0, QSizePolicy.Policy.Minimum,
                                          QSizePolicy.Policy.Minimum)
         layout.addItem(self._empty_spacer)
         return view
+
+    def _set_results_hint(self, text: str) -> None:
+        """Показать подсказку под кнопками только когда есть текст."""
+        self._results_hint.setText(text)
+        self._results_hint.setVisible(bool(text.strip()))
 
     # --- переключение экранов --------------------------------------------
     def show_form(self) -> None:
@@ -419,7 +454,8 @@ class ScanPage(QWidget):
         if self._running():
             return
         options = ScanOptions(**{name: box.isChecked()
-                                 for name, box in self._option_boxes.items()})
+                                 for name, box in self._option_boxes.items()},
+                              deep=self._deep.isChecked())
         if not options.enabled_labels():
             QMessageBox.information(self, i18n.tr('Ничего не выбрано'),
                                     i18n.tr('Отметьте хотя бы один раздел сканирования.'))
@@ -427,12 +463,13 @@ class ScanPage(QWidget):
         output = config.reports_dir(config.load())
         self.show_form()
         self._start.setEnabled(False)
+        self._deep.setEnabled(False)
         self._stop.setVisible(True)
         self._stop.setEnabled(True)
         self._stale = False
         self._status.setText(i18n.tr('Сканирование...'))
         self._progress.setVisible(True)
-        self._results_hint.setText('')
+        self._set_results_hint('')
         self._log('Сканирование начато')
         self._log('Разделы: ' + ', '.join(options.enabled_labels()))
         self._scan_worker = ScanWorker(output, options)
@@ -451,6 +488,7 @@ class ScanPage(QWidget):
 
     def _on_scan_cancelled(self) -> None:
         self._start.setEnabled(True)
+        self._deep.setEnabled(True)
         self._stop.setVisible(False)
         self._progress.setVisible(False)
         self._status.setText(i18n.tr('Сканирование отменено.'))
@@ -467,6 +505,7 @@ class ScanPage(QWidget):
     def _on_scanned(self, bundle: ScanBundle) -> None:
         result = bundle.result
         self._start.setEnabled(True)
+        self._deep.setEnabled(True)
         self._stop.setVisible(False)
         self._progress.setVisible(False)
         duration = i18n.decimal(bundle.duration)
@@ -487,6 +526,9 @@ class ScanPage(QWidget):
             'Собрано записей: {entries} в основном отчёте{addition} · время: {seconds} с',
             entries=result.entries, addition=addition_ui, seconds=duration))
         self._log(f'Анализ: найдено элементов — {len(self._all_findings)}')
+        if bundle.analysis.deep_count:
+            self._log(i18n.tr('Тщательных находок: {count}',
+                              count=bundle.analysis.deep_count))
         counts = Counter(finding.category for finding in self._all_findings)
         for category, count in counts.most_common():
             self._log(f'  • {category}: {count}')
@@ -502,9 +544,11 @@ class ScanPage(QWidget):
         """Пересобрать таблицу с учётом исключений и текущих фильтров."""
         items = exclusions.load(config.reports_dir(config.load()))
         self._findings = [finding for finding in self._all_findings
-                          if not exclusions.contains(items, finding.text)]
+                          if not exclusions.contains(items, finding.text)
+                          and not (finding.fix and exclusions.contains(items, finding.fix))]
         self._hidden_findings = [finding for finding in self._all_findings
-                                 if exclusions.contains(items, finding.text)]
+                                 if exclusions.contains(items, finding.text)
+                                 or (finding.fix and exclusions.contains(items, finding.fix))]
         self._populate_categories()
         self._fill_results(self._findings)
         counts = Counter(finding.category for finding in self._findings)
@@ -520,6 +564,7 @@ class ScanPage(QWidget):
             self._restore_point.setChecked(True)
             self._reboot.setChecked(False)
             self._empty_temp.setChecked(False)
+            self._browser_cache.setChecked(False)
             self._close_processes.setChecked(False)
         self._update_fix_state()
 
@@ -553,16 +598,18 @@ class ScanPage(QWidget):
         self._excluded_manage.setText(i18n.tr('Исключения ({count})',
                                               count=len(items)))
         if self._hidden_findings:
-            self._excluded_label.setText(i18n.tr(
-                'Скрыто исключениями: {count}', count=len(self._hidden_findings)))
+            text = i18n.tr('Скрыто исключениями: {count}',
+                           count=len(self._hidden_findings))
         elif items:
-            self._excluded_label.setText(i18n.tr(
-                'Исключений: {count}, в этом скане совпадений нет', count=len(items)))
+            text = i18n.tr('Исключений: {count}', count=len(items))
         else:
-            self._excluded_label.setText('')
+            text = ''
+        self._excluded_label.setText(text)
+        self._excluded_label.setVisible(bool(text))
 
     def _on_scan_failed(self, message: str) -> None:
         self._start.setEnabled(True)
+        self._deep.setEnabled(True)
         self._stop.setVisible(False)
         self._progress.setVisible(False)
         self._status.setText(i18n.tr('Ошибка: {message}', message=message))
@@ -625,7 +672,8 @@ class ScanPage(QWidget):
         for row, finding in enumerate(self._rows):
             haystack = ' '.join((
                 finding.text, finding.category, i18n.tr(finding.category),
-                finding.kind_label, i18n.tr(finding.kind_label))).casefold()
+                finding.kind_label, i18n.tr(finding.kind_label),
+                finding.note, finding.fix)).casefold()
             visible = ((not query or query in haystack)
                        and (category is None or finding.category == category))
             self._table.setRowHidden(row, not visible)
@@ -654,6 +702,8 @@ class ScanPage(QWidget):
                         and not self._stale)
         selected = bool(self._selected())
         self._recommend.setEnabled(has_findings and not running)
+        self._mark_all.setEnabled(has_findings and not running)
+        self._unmark_all.setEnabled(has_findings and not running)
         self._exclude.setEnabled(selected and not running)
         self._fix.setEnabled(selected and not running)
 
@@ -665,6 +715,8 @@ class ScanPage(QWidget):
             names.append('CloseProcesses')
         if self._empty_temp.isChecked():
             names.append('EmptyTemp')
+        if self._browser_cache.isChecked():
+            names.append('ClearBrowserCache')
         if self._reboot.isChecked():
             names.append('Reboot')
         return ', '.join(names) if names else i18n.tr('нет')
@@ -674,23 +726,57 @@ class ScanPage(QWidget):
             return
         self._table.blockSignals(True)
         for row, finding in enumerate(self._rows):
+            if finding.manual or not finding.recommended:
+                continue
+            item = self._table.item(row, 0)
+            if item is not None:
+                item.setCheckState(Qt.CheckState.Checked)
+        self._table.blockSignals(False)
+        # Включаем рекомендованные директивы, не снимая выбранные пользователем.
+        for checkbox, name, default in (
+            (self._restore_point, 'restore_point', True),
+            (self._close_processes, 'close_processes', False),
+            (self._empty_temp, 'empty_temp', False),
+            (self._browser_cache, 'browser_cache', False),
+            (self._reboot, 'reboot', False),
+        ):
+            if self._recommended.get(name, default):
+                checkbox.setChecked(True)
+        available = sum(1 for finding in self._rows if not finding.manual)
+        recommended_count = sum(1 for finding in self._rows
+                                if not finding.manual and finding.recommended)
+        text = i18n.tr('Отмечено рекомендуемых: {count} из {total}.',
+                       count=recommended_count, total=available)
+        if recommended_count < available:
+            text += ' ' + i18n.tr('Остальные требуют вашего решения.')
+        self._result_status.setText(text)
+        self._log(f'«Рекомендовано»: отмечено рекомендуемых '
+                  f'{recommended_count} из {available}; '
+                  f'директивы — {self._directive_summary()}')
+        self._update_fix_state()
+
+    def mark_all(self) -> None:
+        self._table.blockSignals(True)
+        for row, finding in enumerate(self._rows):
             if finding.manual:
                 continue
             item = self._table.item(row, 0)
             if item is not None:
                 item.setCheckState(Qt.CheckState.Checked)
         self._table.blockSignals(False)
-        self._restore_point.setChecked(self._recommended.get('restore_point', True))
-        self._close_processes.setChecked(self._recommended.get('close_processes', False))
-        self._empty_temp.setChecked(self._recommended.get('empty_temp', False))
-        self._reboot.setChecked(self._recommended.get('reboot', False))
-        count = len(self._selected())
         self._result_status.setText(i18n.tr(
-            'Отмечено: {count} {word}.', count=count,
-            word=i18n.element_word(count)))
-        self._log(f'«Рекомендовано»: отмечено {count} '
-                  f'{_plural(count, "элемент", "элемента", "элементов")}; '
-                  f'директивы — {self._directive_summary()}')
+            'Отмечено: {count} {word}.', count=len(self._selected()),
+            word=i18n.element_word(len(self._selected()))))
+        self._update_fix_state()
+
+    def unmark_all(self) -> None:
+        self._table.blockSignals(True)
+        for row in range(self._table.rowCount()):
+            item = self._table.item(row, 0)
+            if item is not None and item.flags() & Qt.ItemFlag.ItemIsUserCheckable:
+                item.setCheckState(Qt.CheckState.Unchecked)
+        self._table.blockSignals(False)
+        self._result_status.setText(i18n.tr('Галочки сняты.'))
         self._update_fix_state()
 
     # --- исключения, контекстное меню и экспорт ---------------------------
@@ -701,13 +787,14 @@ class ScanPage(QWidget):
         if not selected:
             return
         added = exclusions.add(config.reports_dir(config.load()),
-                               [finding.text for finding in selected])
+                               [finding.fix or finding.text for finding in selected])
         self._log(f'Исключено элементов: {added}')
         self._result_status.setText(i18n.tr('Исключено: {count}', count=added))
         self._refresh_results()
 
     def _exclude_one(self, finding: analyzer.Finding) -> None:
-        added = exclusions.add(config.reports_dir(config.load()), [finding.text])
+        added = exclusions.add(config.reports_dir(config.load()),
+                               [finding.fix or finding.text])
         self._log(f'Исключён элемент: {finding.text[:120]} ({added})')
         self._result_status.setText(i18n.tr('Исключено: {count}', count=added))
         self._refresh_results()
@@ -719,6 +806,9 @@ class ScanPage(QWidget):
         dialog = ExclusionsDialog(exclusions.load(reports), self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
+        if dialog.added:
+            exclusions.add(reports, dialog.added)
+            self._log(f'Добавлено в исключения: {len(dialog.added)}')
         if dialog.clear_all:
             exclusions.clear(reports)
             self._log('Список исключений очищен')
@@ -734,7 +824,7 @@ class ScanPage(QWidget):
         if row < 0 or row >= len(self._rows):
             return
         finding = self._rows[row]
-        actions = parse_fixlist(finding.text)
+        actions = parse_fixlist(finding.fix or finding.text)
         action = actions[0] if actions else None
         file_path = self._file_target(action)
         registry_path = self._registry_target(action)
@@ -869,10 +959,11 @@ class ScanPage(QWidget):
         if not selected:
             return
         text = analyzer.compose_fixlist(
-            [finding.text for finding in selected],
+            [finding.fix or finding.text for finding in selected],
             restore_point=self._restore_point.isChecked(),
             close_processes=self._close_processes.isChecked(),
             empty_temp=self._empty_temp.isChecked(),
+            browser_cache=self._browser_cache.isChecked(),
             reboot=self._reboot.isChecked())
         counts: Counter = Counter()
         for action in parse_fixlist(text):
@@ -893,6 +984,18 @@ class ScanPage(QWidget):
         if self._reboot.isChecked():
             note += i18n.tr(
                 'После исправления потребуется перезагрузка — программа предложит её.')
+        if self._empty_temp.isChecked():
+            note += ('\n\n' if note else '') + i18n.tr(
+                'Очистка Temp удалит содержимое папок %TEMP%, %TMP% и '
+                'C:\\Windows\\Temp. Незавершённые установки и обновления '
+                'могут прерваться, а открытые программы — потерять временные '
+                'данные. Куки, сохранённые пароли и входы в аккаунты не '
+                'затрагиваются.')
+        if self._browser_cache.isChecked():
+            note += ('\n\n' if note else '') + i18n.tr(
+                'Будут удалены кэш и куки Chrome, Edge, Brave, Yandex и '
+                'Firefox. Браузеры будут закрыты, и вы выйдете из всех '
+                'аккаунтов на сайтах.')
         if any(finding.kind == BROWSER for finding in selected):
             note += ('\n\n' if note else '') + i18n.tr(
                 'Настройки браузера правятся в файлах профиля, поэтому браузер '
@@ -910,7 +1013,7 @@ class ScanPage(QWidget):
         self._back.setEnabled(False)
         self._result_progress.setVisible(True)
         self._result_status.setText(i18n.tr('Исправление...'))
-        self._results_hint.setText('')
+        self._set_results_hint('')
         self._log(f'Исправление начато: элементов — {len(selected)}; '
                   f'директивы — {self._directive_summary()}')
         self._log(f'Резервные копии: {backup}')
@@ -958,7 +1061,7 @@ class ScanPage(QWidget):
                         else 'Требуется перезагрузка.' in text)
         self._stale = True
         self._update_fix_state()
-        self._results_hint.setText(i18n.tr(
+        self._set_results_hint(i18n.tr(
             'Исправление завершено. Запустите сканирование заново, '
             'чтобы проверить результат.'))
         if failed:
@@ -992,7 +1095,7 @@ class ScanPage(QWidget):
         if box.clickedButton() is reboot_button:
             if schedule_reboot():
                 self._log('Перезагрузка запланирована через 30 секунд')
-                self._results_hint.setText(i18n.tr(
+                self._set_results_hint(i18n.tr(
                     'Перезагрузка запланирована через 30 секунд. '
                     'Отменить: shutdown /a.'))
             else:
@@ -1004,7 +1107,7 @@ class ScanPage(QWidget):
         else:
             self._log('Перезагрузка отложена — пользователь перезагрузит '
                       'компьютер вручную')
-            self._results_hint.setText(i18n.tr(
+            self._set_results_hint(i18n.tr(
                 'Требуется перезагрузка — перезагрузите компьютер вручную позже.'))
 
     def _on_fix_failed(self, message: str) -> None:
@@ -1045,51 +1148,31 @@ class ScanPage(QWidget):
         return text
 
 
-class LogPage(QWidget):
-    def __init__(self, journal: Journal) -> None:
+class RestorePage(QWidget):
+    """Откат исправлений: выбрать бэкап и отметить объекты для возврата."""
+
+    def __init__(self, log: Callable[[str], None]) -> None:
         super().__init__()
-        self._journal = journal
+        self._log = log
         self._runs: List[backup_restore.FixRun] = []
+        self._entries: List[backup_restore.QuarantineEntry] = []
+        self._entries_for: Optional[backup_restore.FixRun] = None
         self._restore_worker: Optional[RestoreWorker] = None
         layout = QVBoxLayout(self)
         layout.setContentsMargins(34, 30, 34, 30)
         layout.setSpacing(12)
         layout.addWidget(page_header(
-            'Журнал',
-            'Подробный лог: время запуска, разделы сканирования, найденные элементы, '
-            'исправления, ошибки и резервные копии. Здесь же можно откатить '
-            'сделанное исправление.'))
-        layout.addWidget(self._build_rollback())
-        frame, frame_layout = card()
-        row = QHBoxLayout()
-        clear = QPushButton('Очистить журнал')
-        clear.setObjectName('Secondary')
-        clear.setToolTip(i18n.tr('Удалить все записи журнала'))
-        clear.clicked.connect(self.clear)
-        row.addWidget(clear)
-        row.addStretch(1)
-        frame_layout.addLayout(row)
-        self._view = QPlainTextEdit()
-        self._view.setReadOnly(True)
-        self._view.setMinimumHeight(60)
-        frame_layout.addWidget(self._view)
-        layout.addWidget(frame, 1)
-        self._view.setPlainText(journal.load())
-        self._view.moveCursor(QTextCursor.MoveOperation.End)
+            'Откат исправлений',
+            'Каждое исправление сохраняет бэкап: выберите его, отметьте объекты '
+            'и верните файлы, ветки реестра и hosts.'))
+        layout.addWidget(self._build_rollback(), 1)
 
     # --- откат исправлений -------------------------------------------------
     def _build_rollback(self) -> QFrame:
         frame, layout = card()
         layout.setSpacing(8)
         frame.setSizePolicy(QSizePolicy.Policy.Preferred,
-                            QSizePolicy.Policy.Maximum)
-        title = QLabel('Откат исправлений')
-        title.setObjectName('SectionTitle')
-        hint = QLabel(
-            'Каждое исправление сохраняет бэкап — выберите его, чтобы вернуть '
-            'файлы и реестр.')
-        hint.setObjectName('Muted')
-        hint.setWordWrap(True)
+                            QSizePolicy.Policy.Expanding)
         self._runs_table = QTableWidget(0, 3)
         self._runs_table.setHorizontalHeaderLabels(
             [i18n.tr(text) for text in ('Когда', 'Что изменено', 'Объектов')])
@@ -1104,8 +1187,25 @@ class LogPage(QWidget):
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        self._runs_table.setFixedHeight(150)
+        self._runs_table.setMinimumHeight(140)
         self._runs_table.itemSelectionChanged.connect(self._update_rollback)
+        self._entries_table = QTableWidget(0, 2)
+        self._entries_table.setHorizontalHeaderLabels(
+            [i18n.tr(text) for text in ('Объект', 'Тип')])
+        self._entries_table.verticalHeader().setVisible(False)
+        self._entries_table.setAlternatingRowColors(True)
+        self._entries_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._entries_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows)
+        entry_header = self._entries_table.horizontalHeader()
+        entry_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        entry_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self._entries_table.setMinimumHeight(140)
+        self._entries_table.setVisible(False)
+        self._entries_table.itemChanged.connect(self._update_rollback)
+        self._entries_title = QLabel('Объекты выбранного исправления:')
+        self._entries_title.setObjectName('Muted')
+        self._entries_title.setVisible(False)
         row = QHBoxLayout()
         self._runs_refresh = QPushButton('Обновить')
         self._runs_refresh.setObjectName('Secondary')
@@ -1116,16 +1216,22 @@ class LogPage(QWidget):
         self._rollback.setToolTip(i18n.tr(
             'Вернуть файлы и параметры реестра из выбранного исправления'))
         self._rollback.clicked.connect(self.rollback_selected)
+        self._runs_open = QPushButton('Открыть папку')
+        self._runs_open.setObjectName('Secondary')
+        self._runs_open.setEnabled(False)
+        self._runs_open.setToolTip(i18n.tr('Открыть папку с бэкапами выбранного исправления'))
+        self._runs_open.clicked.connect(self.open_selected_folder)
         row.addWidget(self._runs_refresh)
         row.addWidget(self._rollback)
+        row.addWidget(self._runs_open)
         row.addStretch(1)
         self._runs_status = QLabel('')
         self._runs_status.setObjectName('Muted')
         self._runs_status.setWordWrap(True)
-        layout.addWidget(title)
-        layout.addWidget(hint)
-        layout.addWidget(self._runs_table)
         layout.addLayout(row)
+        layout.addWidget(self._runs_table, 3)
+        layout.addWidget(self._entries_title)
+        layout.addWidget(self._entries_table, 2)
         layout.addWidget(self._runs_status)
         self.reload_runs()
         return frame
@@ -1133,7 +1239,8 @@ class LogPage(QWidget):
     @staticmethod
     def _kinds_text(kinds: dict) -> str:
         labels = {'file': 'файлы', 'reg': 'реестр', 'reg_new': 'значение реестра',
-                  'file_edit': 'файл настроек', 'hosts': 'hosts'}
+                  'file_edit': 'файл настроек', 'hosts': 'hosts',
+                  'task': 'задачи'}
         parts = []
         for kind, count in sorted(kinds.items()):
             if count:
@@ -1173,8 +1280,61 @@ class LogPage(QWidget):
 
     def _update_rollback(self, *_args) -> None:
         busy = self._busy()
+        run = self._selected_run()
+        if run is None:
+            if self._entries_for is not None:
+                self._entries = []
+                self._entries_for = None
+                self._entries_table.setRowCount(0)
+                self._entries_table.setVisible(False)
+                self._entries_title.setVisible(False)
+        elif self._entries_for is not run:
+            self._fill_entries(run)
+        has_run = run is not None
         self._runs_refresh.setEnabled(not busy)
-        self._rollback.setEnabled(not busy and self._selected_run() is not None)
+        self._rollback.setEnabled(not busy and has_run and bool(self._checked_entries()))
+        self._runs_open.setEnabled(has_run)
+
+    _KIND_LABELS = {'file': 'файл', 'reg': 'реестр', 'reg_new': 'значение реестра',
+                    'file_edit': 'файл настроек', 'hosts': 'hosts', 'task': 'задача'}
+
+    def _fill_entries(self, run: backup_restore.FixRun) -> None:
+        self._entries = backup_restore.run_entries(run)
+        self._entries_for = run
+        table = self._entries_table
+        table.blockSignals(True)
+        table.setRowCount(len(self._entries))
+        for row, entry in enumerate(self._entries):
+            item = QTableWidgetItem(entry.original)
+            item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable |
+                          Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Checked)
+            item.setToolTip(str(entry.stored))
+            table.setItem(row, 0, item)
+            kind = QTableWidgetItem(i18n.tr(self._KIND_LABELS.get(entry.kind, entry.kind)))
+            kind.setToolTip(str(entry.stored))
+            table.setItem(row, 1, kind)
+        table.blockSignals(False)
+        table.setVisible(bool(self._entries))
+        self._entries_title.setVisible(bool(self._entries))
+
+    def _checked_entries(self) -> List[backup_restore.QuarantineEntry]:
+        result: List[backup_restore.QuarantineEntry] = []
+        for row, entry in enumerate(self._entries):
+            item = self._entries_table.item(row, 0)
+            if item is not None and item.checkState() == Qt.CheckState.Checked:
+                result.append(entry)
+        return result
+
+    def open_selected_folder(self) -> None:
+        run = self._selected_run()
+        if run is None:
+            return
+        folder = run.backup
+        if not folder.is_dir():
+            self._runs_status.setText(i18n.tr('Папка бэкапа не найдена'))
+            return
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
     def rollback_selected(self) -> None:
         if self._busy():
@@ -1183,10 +1343,10 @@ class LogPage(QWidget):
         if run is None:
             self._runs_status.setText(i18n.tr('Сначала выделите исправление'))
             return
-        entries = backup_restore.run_entries(run)
+        entries = self._checked_entries()
         if not entries:
-            self._runs_status.setText(
-                i18n.tr('В бэкапе этого исправления нет данных'))
+            self._runs_status.setText(i18n.tr(
+                'Отметьте объекты, которые нужно вернуть'))
             return
         box = QMessageBox(self)
         box.setWindowTitle(i18n.tr('Откатить исправление от {created}?',
@@ -1196,8 +1356,9 @@ class LogPage(QWidget):
                             count=len(entries)))
         box.setInformativeText(i18n.tr(
             'Файлы вернутся на прежние места, ветки реестра импортируются, '
-            'hosts перезаписывается. Службы и драйверы заработают после '
-            'перезагрузки.'))
+            'hosts перезаписывается. Если по прежнему пути появился другой '
+            'файл, он будет перемещён в папку бэкапа. Службы и драйверы '
+            'заработают после перезагрузки.'))
         box.setStandardButtons(QMessageBox.StandardButton.Yes |
                                QMessageBox.StandardButton.No)
         box.setDefaultButton(QMessageBox.StandardButton.No)
@@ -1242,9 +1403,57 @@ class LogPage(QWidget):
         self.reload_runs()
 
     def append(self, message: str) -> None:
+        self._log(message)
+
+
+class LogPage(QWidget):
+    """Подробный журнал действий и кнопка его очистки."""
+
+    def __init__(self, journal: Journal) -> None:
+        super().__init__()
+        self._journal = journal
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(34, 30, 34, 30)
+        layout.setSpacing(12)
+        layout.addWidget(page_header(
+            'Журнал',
+            'Подробный лог: время запуска, разделы сканирования, найденные '
+            'элементы, исправления, ошибки и резервные копии.'))
+        frame, frame_layout = card()
+        row = QHBoxLayout()
+        clear = QPushButton('Очистить журнал')
+        clear.setObjectName('Secondary')
+        clear.setToolTip(i18n.tr('Удалить все записи журнала'))
+        clear.clicked.connect(self.clear)
+        open_folder = QPushButton('Открыть папку журнала')
+        open_folder.setObjectName('Secondary')
+        open_folder.setToolTip(i18n.tr('Открыть папку с журналом и отчётами'))
+        open_folder.clicked.connect(self.open_folder)
+        row.addWidget(clear)
+        row.addWidget(open_folder)
+        row.addStretch(1)
+        frame_layout.addLayout(row)
+        self._view = QPlainTextEdit()
+        self._view.setReadOnly(True)
+        self._view.setMinimumHeight(60)
+        frame_layout.addWidget(self._view)
+        layout.addWidget(frame, 1)
+        self._view.setPlainText(journal.load())
+        self._view.moveCursor(QTextCursor.MoveOperation.End)
+
+    def append(self, message: str) -> None:
         self._view.appendPlainText(self._journal.append(message))
         self._view.moveCursor(QTextCursor.MoveOperation.End)
         self._view.ensureCursorVisible()
+
+    def open_folder(self) -> None:
+        folder = self._journal.path.parent
+        if not folder.is_dir():
+            QMessageBox.information(
+                self, i18n.tr('Путь не найден'),
+                i18n.tr('Папка не существует: {path}', path=folder))
+            return
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(folder)))
 
     def clear(self) -> None:
         box = QMessageBox(self)

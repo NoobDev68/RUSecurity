@@ -20,16 +20,21 @@ def _scan(args: argparse.Namespace) -> int:
     output = Path(args.output) if args.output else config.reports_dir(settings)
     print(f'Сканирование в {output} ...', flush=True)
     result = scanner.scan(output, include_addition=not args.no_addition,
-                          progress=lambda message: print(f'  {message}', flush=True))
+                          progress=lambda message: print(f'  {message}', flush=True),
+                          options=scanner.ScanOptions(deep=args.deep))
     print(f'Готово: {result.report}')
     if result.addition:
         print(f'       {result.addition}')
+    if result.deep:
+        print(f'       {result.deep} (тщательных находок: {result.deep_count})')
     print(f'Записей в отчёте: {result.entries}')
     if args.summary:
         Path(args.summary).write_text(json.dumps({
             'report': str(result.report),
             'addition': str(result.addition) if result.addition else None,
             'entries': result.entries,
+            'deep': str(result.deep) if result.deep else None,
+            'deep_count': result.deep_count,
         }, ensure_ascii=False), encoding='utf-8')
     return 0
 
@@ -38,7 +43,9 @@ def _analyze(args: argparse.Namespace) -> int:
     from . import analyzer
     report = Path(args.report)
     addition = Path(args.addition) if args.addition else analyzer.resolve_addition(report)
-    result = analyzer.analyze(report, addition)
+    deep_path = Path(args.deep) if args.deep else report.parent / names.DEEP
+    result = analyzer.analyze(report, addition,
+                              deep_path=deep_path if deep_path.is_file() else None)
     if not result.text:
         print('Подозрительных записей не найдено — fixlist не нужен.', file=sys.stderr)
         return 0
@@ -255,11 +262,14 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument('-o', '--output', help='каталог для отчётов')
     scan.add_argument('--no-addition', action='store_true', help='не создавать дополнительный отчёт')
     scan.add_argument('--summary', help='записать итог сканирования в JSON')
+    scan.add_argument('--deep', action='store_true',
+                      help='тщательный скан: COM, политики, SvcHost, все задачи, корни дисков')
     scan.set_defaults(func=_scan)
 
     analyze = sub.add_parser('analyze', help='разобрать отчёты и создать список исправлений')
     analyze.add_argument('report', help='путь к отчёту RUSecurity')
     analyze.add_argument('addition', nargs='?', help='путь к дополнительному отчёту')
+    analyze.add_argument('--deep', help='путь к rusecurity-deep.json (по умолчанию рядом с отчётом)')
     analyze.add_argument('-o', '--output', help=f'куда сохранить {names.FIXLIST}')
     analyze.set_defaults(func=_analyze)
 

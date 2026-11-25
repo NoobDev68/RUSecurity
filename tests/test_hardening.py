@@ -296,7 +296,7 @@ def test_recommended_set_skips_risky_rules():
     ids = {rule.id for rule in hardening.RULES
            if rule.fixable and not rule.recommended}
     assert ids == {'smb_sign_server', 'smb_sign_client', 'llmnr',
-                   'ps_transcript'}
+                   'ps_transcript', 'asr_drivers', 'asr_obfuscation'}
 
 
 def test_recommended_issues_skip_optional_and_manual(fake):
@@ -308,6 +308,39 @@ def test_recommended_issues_skip_optional_and_manual(fake):
     picked = hardening.recommended(hardening.evaluate())
     assert [issue.rule_id for issue in picked] == ['lsa_lmcompat']
     assert picked[0].recommended is True
+
+
+def test_ntlm_receive_restrict_is_report_only(fake):
+    values = _baseline()
+    values[(hardening._LSA + r'\MSV1_0', 'RestrictReceivingNTLMTraffic')] = 0
+    fake(values)
+    issue = next(i for i in hardening.evaluate()
+                 if i.rule_id == 'ntlm_restrict_receive')
+    assert issue.manual is True
+    assert 'RestrictReceivingNTLMTraffic' in issue.command
+    assert issue.how_to
+
+
+def test_audit_ntlm_receive_is_fixable(fake):
+    values = _baseline()
+    values[(hardening._LSA + r'\MSV1_0', 'AuditReceivingNTLMTraffic')] = 0
+    fake(values)
+    issue = next(i for i in hardening.evaluate()
+                 if i.rule_id == 'ntlm_audit_receive')
+    assert issue.manual is False
+    assert issue.fix_line.startswith('Reg: reg add')
+
+
+def test_asr_rule_fix_line_writes_guid():
+    line = hardening._fix_line(hardening._RULES_BY_ID['asr_lsass'])
+    assert '01443614-cd74-433a-b99e-2ecdc07bfc25' in line
+    assert line.startswith('Reg: reg add')
+
+
+def test_defender_pua_is_recommended():
+    rule = hardening._RULES_BY_ID['defender_pua']
+    assert rule.recommended is True
+    assert rule.missing == 'bad'
 
 
 def test_evaluate_is_empty_on_non_windows(monkeypatch):

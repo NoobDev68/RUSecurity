@@ -84,13 +84,20 @@ _TRANSLATIONS: Dict[str, str] = {
     'Точка восстановления': 'Restore point',
     'Перезагрузить систему': 'Restart system',
     'Очистить временные файлы': 'Clear temporary files',
+    'Очистить кэш и куки браузеров': 'Clear browser cache and cookies',
     'Закрыть блокирующие процессы': 'Close blocking processes',
     'CreateRestorePoint: создать точку восстановления перед исправлением.':
         'CreateRestorePoint: create a restore point before fixing.',
     'Reboot: перезагрузить систему после исправления (службы и драйверы).':
         'Reboot: restart the system after fixing (services and drivers).',
-    'EmptyTemp: очистить временные файлы и кэши (нужно после браузерных исправлений).':
-        'EmptyTemp: clear temporary files and caches (needed after browser fixes).',
+    'EmptyTemp: удалить содержимое папок Temp (%TEMP%, %TMP%, '
+    'C:\\Windows\\Temp). Куки и профили браузеров не затрагиваются.':
+        'EmptyTemp: delete the contents of the Temp folders (%TEMP%, %TMP%, '
+        'C:\\Windows\\Temp). Browser cookies and profiles are not touched.',
+    'ClearBrowserCache: удалить кэш и куки Chrome, Edge, Brave, Yandex '
+    'и Firefox. Вы выйдете из всех аккаунтов на сайтах.':
+        'ClearBrowserCache: delete cache and cookies of Chrome, Edge, Brave, '
+        'Yandex and Firefox. You will be logged out of all websites.',
     'CloseProcesses: завершить только процессы, чьи файлы выбраны к удалению '
     '(например, браузер перед удалением папки расширения). Остальные программы не трогает.':
         'CloseProcesses: terminate only processes whose files are selected for '
@@ -102,6 +109,17 @@ _TRANSLATIONS: Dict[str, str] = {
     'Исправить': 'Fix',
     'только вручную': 'manual only',
     'Отмечено: {count} {word}.': 'Selected: {count} {word}.',
+    'Галочки сняты.': 'All unchecked.',
+    'Снять всё': 'Unselect all',
+    'Снять галочки со всех элементов': 'Uncheck every item',
+    'Отметить все элементы, которые исправляются автоматически':
+        'Select every item that can be fixed automatically',
+    'Отмечено рекомендуемых: {count} из {total}.': 'Recommended selected: {count} of {total}.',
+    'Остальные требуют вашего решения.': 'The rest are up to you.',
+    'Отметить рекомендованные элементы и включить нужные директивы '
+    'по анализу. Остальные элементы остаются на ваше усмотрение.':
+        'Mark the recommended items and apply the matching directives. '
+        'Other items are left to your judgement.',
     'Исправление...': 'Fixing…',
     'Исправление завершено.': 'Fix completed.',
     'Исправление завершено. Запустите сканирование заново, чтобы проверить результат.':
@@ -116,6 +134,21 @@ _TRANSLATIONS: Dict[str, str] = {
         'are kept in quarantine.',
     'После исправления потребуется перезагрузка — программа предложит её.':
         'A restart will be required after fixing — the program will offer it.',
+    'Очистка Temp удалит содержимое папок %TEMP%, %TMP% и '
+    'C:\\Windows\\Temp. Незавершённые установки и обновления '
+    'могут прерваться, а открытые программы — потерять временные '
+    'данные. Куки, сохранённые пароли и входы в аккаунты не '
+    'затрагиваются.':
+        'Clearing Temp deletes the contents of %TEMP%, %TMP% and '
+        'C:\\Windows\\Temp. Unfinished installations and updates may break, '
+        'and running programs may lose temporary data. Cookies, saved '
+        'passwords and account sessions are not affected.',
+    'Будут удалены кэш и куки Chrome, Edge, Brave, Yandex и '
+    'Firefox. Браузеры будут закрыты, и вы выйдете из всех '
+    'аккаунтов на сайтах.':
+        'Cache and cookies of Chrome, Edge, Brave, Yandex and Firefox will be '
+        'deleted. Browsers will be closed and you will be logged out of all '
+        'websites.',
     'Настройки браузера правятся в файлах профиля, поэтому браузер '
     'будет закрыт; вкладки восстановятся при следующем запуске.':
         'Browser settings are edited in profile files, so the browser will be '
@@ -220,14 +253,24 @@ _TRANSLATIONS: Dict[str, str] = {
 
     # --- журнал -----------------------------------------------------------
     'Подробный лог: время запуска, разделы сканирования, найденные элементы, '
-    'исправления, ошибки и резервные копии. Здесь же можно откатить '
-    'сделанное исправление.':
+    'исправления, ошибки и резервные копии.':
         'Detailed log: start time, scan sections, found items, fixes, errors '
-        'and backups. A finished fix can be rolled back here too.',
+        'and backups.',
     'Очистить журнал': 'Clear log',
+    'Открыть папку журнала': 'Open log folder',
+    'Открыть папку с журналом и отчётами':
+        'Open the folder with the log and reports',
     'Удалить все записи журнала': 'Delete all log entries',
     'Очистить журнал?': 'Clear log?',
     'Все записи журнала будут удалены.': 'All log entries will be deleted.',
+
+    # --- откат исправлений -------------------------------------------------
+    'Откат исправлений': 'Rollback',
+    'Каждое исправление сохраняет бэкап: выберите его, отметьте объекты '
+    'и верните файлы, ветки реестра и hosts.':
+        'Every fix keeps a backup: select it, mark the objects and restore '
+        'files, registry keys and hosts.',
+    'Объекты выбранного исправления:': 'Objects of the selected fix:',
 
     # --- статусы и категории ---------------------------------------------
     'выполнено': 'done',
@@ -275,10 +318,6 @@ _TRANSLATIONS: Dict[str, str] = {
 
     # --- откат исправлений ------------------------------------------------
     'Откат исправлений': 'Rollback',
-    'Каждое исправление сохраняет бэкап — выберите его, чтобы вернуть '
-    'файлы и реестр.':
-        'Every fix keeps a backup — select one to restore its files and '
-        'registry keys.',
     'Что изменено': 'Changes',
     'Объектов': 'Items',
     'файлы': 'files',
@@ -300,12 +339,21 @@ _TRANSLATIONS: Dict[str, str] = {
     'Будут возвращены объекты из бэкапа: {count}.':
         'Items will be restored from the backup: {count}.',
     'Файлы вернутся на прежние места, ветки реестра импортируются, '
-    'hosts перезаписывается. Службы и драйверы заработают после '
-    'перезагрузки.':
+    'hosts перезаписывается. Если по прежнему пути появился другой '
+    'файл, он будет перемещён в папку бэкапа. Службы и драйверы '
+    'заработают после перезагрузки.':
         'Files return to their original places, registry keys are imported, '
-        'hosts is overwritten. Services and drivers will work after a reboot.',
+        'hosts is overwritten. If another file now occupies the original path, '
+        'it is moved into the backup folder. Services and drivers will work '
+        'after a reboot.',
     'Откат...': 'Rolling back...',
-    'Откат выполнен': 'Rollback completed',
+    'Отметьте объекты, которые нужно вернуть':
+        'Mark the objects you want to restore',
+    'задача': 'task',
+    'Открыть папку': 'Open folder',
+    'Открыть папку с бэкапами выбранного исправления':
+        'Open the backup folder of the selected fix',
+    'Папка бэкапа не найдена': 'Backup folder not found',    'Откат выполнен': 'Rollback completed',
     'Обработано объектов: {count}.\n\nСлужбы и драйверы заработают после '
     'перезагрузки.':
         'Items processed: {count}.\n\nServices and drivers will work after a '
@@ -341,10 +389,10 @@ _TRANSLATIONS: Dict[str, str] = {
     'Отметить всё': 'Select all',
     'Отметить все проверки, которые исправляются автоматически':
         'Select every check that can be fixed automatically',
-    'Отметить только важные проверки — исправления без риска для сети '
-    'и устройств':
-        'Select only the important checks — fixes that do not risk the '
-        'network or devices',
+    'Отметить рекомендуемые проверки — важные исправления без риска '
+    'для сети и устройств. Уже отмеченные остаются.':
+        'Mark the recommended checks — important fixes that do not risk the '
+        'network or devices. Already selected ones stay.',
     'рекомендуется к исправлению': 'recommended for fixing',
     'необязательная проверка': 'optional check',
     'Сейчас: {current} · должно быть: {expected}':
@@ -356,8 +404,10 @@ _TRANSLATIONS: Dict[str, str] = {
         'PowerShell command (run as administrator):',
     'Изменение обратимо: перед исправлением сохраняется копия ветки реестра.':
         'The change is reversible: the registry key is backed up before fixing.',
-    'Отмечены рекомендуемые проверки: {count} из {total} найденных.':
-        'Recommended checks selected: {count} of {total} found.',
+    'Отмечены рекомендуемые проверки: {count} из {total} исправляемых. '
+    'Остальные выберите сами.':
+        'Recommended checks selected: {count} of {total} fixable. '
+        'Select the rest yourself.',
     'Раздел': 'Section',
     'Проверка': 'Check',
     'Сейчас': 'Current',
@@ -437,8 +487,7 @@ _TRANSLATIONS: Dict[str, str] = {
     'Ничего не найдено по фильтру.': 'Nothing matches the filter.',
     'Показано: {shown} из {total}': 'Shown: {shown} of {total}',
     'Скрыто исключениями: {count}': 'Hidden by exclusions: {count}',
-    'Исключений: {count}, в этом скане совпадений нет':
-        'Exclusions: {count}, no matches in this scan',
+    'Исключений: {count}': 'Exclusions: {count}',
     'Все найденные элементы скрыты исключениями: {count}. '
     'Верните их через «Исключения…».':
         'All found items are hidden by exclusions: {count}. '
@@ -506,6 +555,52 @@ _TRANSLATIONS: Dict[str, str] = {
     'Предпросмотр не удался': 'Preview failed',
     '{message}\n\nИсправление не запущено.':
         '{message}\n\nThe fix was not started.',
+
+    # --- тщательное сканирование ------------------------------------------
+    'Тщательное сканирование': 'Thorough scan',
+    'Дополнительные проверки: COM-перехват, политики браузеров, '
+    'ярлыки, SvcHost, устаревшая автозагрузка, LSA, модули процессов, '
+    'брандмауэр, сеть, WMI-подписки, переменные окружения и все задачи. '
+    'Скан дольше.':
+        'Additional checks: COM hijacking, browser policies, shortcuts, '
+        'SvcHost, legacy autostart, LSA, process modules, firewall, network, '
+        'WMI subscriptions, environment variables and all tasks. '
+        'The scan takes longer.',
+    'Тщательных находок: {count}': 'Thorough findings: {count}',
+    'Включите тщательное сканирование для проверки COM-перехватов, '
+    'политик браузеров, ярлыков, SvcHost, процессов, BITS, расширений '
+    'оболочки, свежих файлов, путей служб, поисковых движков, '
+    'Native Messaging, устаревших точек автозагрузки, LSA, двоичных '
+    'файлов служб, модулей процессов, правил брандмауэра, портов, '
+    'маршрутов, WMI-подписок, переменных окружения, корней дисков и '
+    'всех задач.':
+        'Enable thorough scanning to check COM hijacking, browser policies, '
+        'shortcuts, SvcHost, processes, BITS, shell extensions, recent files, '
+        'service paths, search engines, Native Messaging, legacy autostart, '
+        'LSA, service binaries, process modules, firewall rules, ports, '
+        'routes, WMI subscriptions, environment variables, drive roots '
+        'and all tasks.',
+    'Расширения браузеров': 'Browser extensions',
+    'Сеть': 'Network',
+    'Устаревшая автозагрузка': 'Legacy autostart',
+    'LSA и учётные данные': 'LSA and credentials',
+    'Модули процессов': 'Process modules',
+    'WMI-подписки': 'WMI subscriptions',
+    'Переменные окружения': 'Environment variables',
+    'COM-перехват': 'COM hijack',
+    'Политики браузеров': 'Browser policies',
+    'Ярлыки браузеров': 'Browser shortcuts',
+    'SvcHost/ServiceDll': 'SvcHost/ServiceDll',
+    'Корни дисков': 'Drive roots',
+    'ярлыки браузеров': 'browser shortcuts',
+    'задачи': 'tasks',
+    'BITS-задания': 'BITS jobs',
+    'Свежие файлы': 'Recent files',
+    'Поисковые движки': 'Search engines',
+    'Native Messaging': 'Native Messaging',
+    'процессы': 'processes',
+    'поисковые движки': 'search engines',
+    'пути служб': 'service paths',
 }
 
 

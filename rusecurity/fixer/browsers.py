@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import time
 from pathlib import Path
 from typing import Callable, List, Tuple
@@ -256,3 +257,64 @@ def _fix_firefox(path: Path, setting: str) -> bool:
     except OSError:
         return False
     return True
+
+
+_CACHE_ENTRIES = ('Cache', 'Code Cache', 'GPUCache')
+
+
+def _close_all() -> List[str]:
+    """Закрыть все известные браузеры, чтобы файлы не были заняты."""
+    names = {name.lower() for processes in PROCESSES.values() for name in processes}
+    current = os.getpid()
+    closed: List[str] = []
+    for process in winapi.list_processes():
+        if process.pid <= 4 or process.pid == current:
+            continue
+        image = winapi.process_image_path(process.pid)
+        if not image or os.path.basename(image).lower() not in names:
+            continue
+        if winapi.terminate_process(process.pid):
+            closed.append(process.name or os.path.basename(image))
+    if closed:
+        time.sleep(1.5)
+    return closed
+
+
+def _delete(path: Path) -> bool:
+    try:
+        if path.is_dir():
+            shutil.rmtree(path, ignore_errors=True)
+        elif path.exists():
+            path.unlink()
+        return True
+    except OSError:
+        return False
+
+
+def clear_cache_and_cookies() -> int:
+    """Очистить кэш и куки Chromium-браузеров и Firefox. Возвращает число объектов."""
+    _close_all()
+    removed = 0
+    for profile, _prefix in chromium_profiles():
+        for name in _CACHE_ENTRIES:
+            if _delete(profile / name):
+                removed += 1
+        for name in ('Cookies', 'Cookies-journal'):
+            if _delete(profile / name):
+                removed += 1
+        network = profile / 'Network'
+        for name in ('Cookies', 'Cookies-journal'):
+            if _delete(network / name):
+                removed += 1
+    appdata = os.environ.get('APPDATA', '')
+    firefox = Path(appdata) / 'Mozilla' / 'Firefox' / 'Profiles'
+    if firefox.is_dir():
+        for profile in firefox.iterdir():
+            if not profile.is_dir():
+                continue
+            if _delete(profile / 'cache2'):
+                removed += 1
+            for name in ('cookies.sqlite', 'cookies.sqlite-wal', 'cookies.sqlite-shm'):
+                if _delete(profile / name):
+                    removed += 1
+    return removed

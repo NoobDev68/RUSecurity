@@ -134,8 +134,7 @@ class HardeningPage(QWidget):
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         header = table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
-        table.setColumnWidth(1, 170)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         for column in (3, 4, 5):
             header.setSectionResizeMode(
@@ -197,8 +196,8 @@ class HardeningPage(QWidget):
         self._recommend = QPushButton('Рекомендовано')
         self._recommend.setObjectName('Secondary')
         self._recommend.setToolTip(i18n.tr(
-            'Отметить только важные проверки — исправления без риска для сети '
-            'и устройств'))
+            'Отметить рекомендуемые проверки — важные исправления без риска '
+            'для сети и устройств. Уже отмеченные остаются.'))
         self._recommend.clicked.connect(self.recommend)
         self._mark_all = QPushButton('Отметить всё')
         self._mark_all.setObjectName('Secondary')
@@ -373,23 +372,25 @@ class HardeningPage(QWidget):
                                   and not running and not self._stale)
 
     def recommend(self) -> None:
-        targets = hardening.recommended(self._issues)
+        recommended_ids = {issue.rule_id
+                           for issue in hardening.recommended(self._issues)}
         self._table.blockSignals(True)
         for row, issue in enumerate(self._issues):
-            item = self._table.item(row, 0)
-            if item is None or issue.manual:
+            if issue.manual or issue.rule_id not in recommended_ids:
                 continue
-            state = (Qt.CheckState.Checked if issue in targets
-                     else Qt.CheckState.Unchecked)
-            item.setCheckState(state)
+            item = self._table.item(row, 0)
+            if item is not None:
+                item.setCheckState(Qt.CheckState.Checked)
         self._table.blockSignals(False)
         self._update_state()
-        marked = len(self._selected())
+        fixable_total = len(hardening.fixable(self._issues))
         self._hint.setText(i18n.tr(
-            'Отмечены рекомендуемые проверки: {count} из {total} найденных.',
-            count=marked, total=len(self._issues)))
-        self._log(f'«Рекомендовано»: отмечено {marked} из {len(self._issues)} '
-                  f'(важные исправления без риска для сети и устройств)')
+            'Отмечены рекомендуемые проверки: {count} из {total} исправляемых. '
+            'Остальные выберите сами.',
+            count=len(recommended_ids), total=fixable_total))
+        self._log(f'«Рекомендовано»: отмечено {len(recommended_ids)} из '
+                  f'{fixable_total} исправляемых (важные исправления без риска '
+                  f'для сети и устройств)')
 
     def mark_all(self) -> None:
         self._table.blockSignals(True)

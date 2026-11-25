@@ -15,6 +15,7 @@ FIXLIST = 'rusecurity-fix.txt'
 FIXLOG = 'rusecurity-log.txt'
 JOURNAL = 'rusecurity-journal.txt'
 EXCLUSIONS = 'rusecurity-exclusions.json'
+DEEP = 'rusecurity-deep.json'
 BACKUPS = 'Backups'
 
 LEGACY_RUSECURITY_ADDITION = 'rusecurity-additional.txt'

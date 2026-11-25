@@ -59,7 +59,8 @@ class ScanWorker(QThread):
                 self.cancelled.emit()
                 return
             analysis = analyzer.analyze(result.report, result.addition,
-                                        options=self.options)
+                                        options=self.options,
+                                        deep_path=result.deep)
         except ScanCancelled:
             self.cancelled.emit()
             return

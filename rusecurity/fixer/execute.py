@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import ctypes
+import hashlib
 import json
 import os
 import shutil
+import sqlite3
 import subprocess
 import time
 import winreg
@@ -30,8 +32,10 @@ _DEFAULT_HOSTS = (
 _NOOP_KINDS = {act.NOOP, act.CLOSE_PROCESSES}
 _MUTATING_KINDS = {
     act.REG_VALUE, act.REG_KEY, act.REG_SET, act.SERVICE, act.TASK, act.FIREWALL,
-    act.SECURITY_PROVIDER, act.SHORTCUT, act.SHORTCUT_TARGET, act.FILE, act.ADS,
-    act.HOSTS, act.EMPTY_TEMP, act.EXPORT_KEY, act.BROWSER, act.EXTENSION,
+    act.SECURITY_PROVIDER, act.SHORTCUT, act.SHORTCUT_TARGET, act.SHORTCUT_CLEAN,
+    act.PROCESS_KILL, act.BITS_CANCEL, act.WEB_DATA, act.SERVICE_QUOTE,
+    act.FILE, act.ADS, act.HOSTS, act.EMPTY_TEMP, act.BROWSER_CACHE, act.EXPORT_KEY,
+    act.BROWSER, act.EXTENSION,
 }
 
 
@@ -109,6 +113,7 @@ class Fixer:
         self.progress = progress
         self.create_restore_point = create_restore_point
         self._firewall_backed_up = False
+        self._firewall_reloaded = False
         self._restore_point_done = False
         self._restore_message = ''
         self._pending_reboot = False
@@ -222,6 +227,9 @@ class Fixer:
         name = action.name.strip('\\')
         if self.dry_run:
             return Outcome(action, 'planned', 'удалить задачу')
+        if not self._backup_task(name):
+            return Outcome(action, 'failed',
+                           'не удалось сохранить XML задачи для отката')
         completed = _run(['schtasks', '/Delete', '/TN', '\\' + name, '/F'])
         if completed.returncode != 0:
             text = completed.stderr.decode('cp866', errors='replace').strip()
@@ -237,7 +245,21 @@ class Fixer:
             self._backup_registry(key)
             self._firewall_backed_up = True
         status = registry.delete_value(key, action.name)
-        return Outcome(action, status, f'правило [{action.name}]')
+        detail = f'правило [{action.name}]'
+        if status == 'done' and not self._firewall_reloaded:
+            self._reload_firewall()
+            self._firewall_reloaded = True
+            detail += '; служба брандмауэра перезапущена'
+        return Outcome(action, status, detail)
+
+    def _reload_firewall(self) -> None:
+        """Применить удаление правил сразу — перезапустить службу брандмауэра."""
+        try:
+            _run(['powershell', '-NoProfile', '-NonInteractive', '-Command',
+                  'Restart-Service mpssvc -Force -ErrorAction SilentlyContinue'],
+                 timeout=90)
+        except (OSError, subprocess.SubprocessError):
+            pass
 
     def _do_security_provider(self, action: act.Action) -> Outcome:
         path = (f'HKLM\\SOFTWARE\\Microsoft\\Security Center\\Provider'
@@ -260,6 +282,97 @@ class Fixer:
             if candidate.is_file():
                 return self._delete_path(action, str(candidate))
         return Outcome(action, 'not_found', action.name)
+
+    def _do_shortcut_clean(self, action: act.Action) -> Outcome:
+        if not action.target:
+            return Outcome(action, 'failed', 'в ярлыке нет цели')
+        source = Path(action.path)
+        if not source.is_file():
+            return Outcome(action, 'not_found', str(source))
+        if self.dry_run:
+            return Outcome(action, 'planned', 'исправить ярлык')
+        self._backup_edit(source)
+        if winapi.create_shortcut(str(source), action.target, action.value):
+            return Outcome(action, 'done', f'{source} -> {action.target}')
+        return Outcome(action, 'failed', 'ярлык не перезаписан')
+
+    def _do_process_kill(self, action: act.Action) -> Outcome:
+        try:
+            pid = int(action.name)
+        except (TypeError, ValueError):
+            return Outcome(action, 'failed', 'некорректный PID')
+        target = Path(os.path.expandvars(action.path))
+        if self.dry_run:
+            return Outcome(action, 'planned', 'завершить процесс и убрать файл')
+        actual = winapi.process_image_path(pid)
+        if not actual:
+            return Outcome(action, 'not_found', f'PID {pid} уже завершён')
+        if os.path.normcase(os.path.abspath(actual)) != os.path.normcase(
+                os.path.abspath(str(target))):
+            return Outcome(action, 'failed', 'PID уже занят другим процессом')
+        if not winapi.terminate_process(pid):
+            return Outcome(action, 'failed', 'процесс не завершён')
+        if target.exists():
+            if self._quarantine(target):
+                return Outcome(action, 'done', f'PID {pid}, файл в карантине')
+            return Outcome(action, 'failed', 'процесс закрыт, файл убрать не удалось')
+        return Outcome(action, 'done', f'PID {pid}, файла уже нет')
+
+    def _do_bits_cancel(self, action: act.Action) -> Outcome:
+        if self.dry_run:
+            return Outcome(action, 'planned', 'отменить BITS-задание')
+        try:
+            completed = _run(['bitsadmin', '/cancel', action.name], timeout=60)
+        except (OSError, subprocess.SubprocessError) as exc:
+            return Outcome(action, 'failed', str(exc))
+        if completed.returncode != 0:
+            text = completed.stderr.decode('cp866', errors='replace').strip()
+            return Outcome(action, 'failed', text or 'bitsadmin /cancel')
+        return Outcome(action, 'done', f'BITS: {action.name}')
+
+    def _do_web_data(self, action: act.Action) -> Outcome:
+        from . import browsers
+
+        database = Path(action.path)
+        if not database.is_file():
+            return Outcome(action, 'not_found', str(database))
+        try:
+            row_id = int(action.name)
+        except (TypeError, ValueError):
+            return Outcome(action, 'failed', 'некорректный id движка')
+        if self.dry_run:
+            return Outcome(action, 'planned', 'удалить поисковый движок')
+        browsers.close(action.browser)
+        try:
+            checkpoint = sqlite3.connect(database)
+            try:
+                checkpoint.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+                checkpoint.commit()
+            finally:
+                checkpoint.close()
+            self._backup_edit(database)
+            connection = sqlite3.connect(database)
+            try:
+                cursor = connection.execute(
+                    'DELETE FROM keywords WHERE id = ?', (row_id,))
+                connection.commit()
+                if cursor.rowcount <= 0:
+                    return Outcome(action, 'not_found', f'id {row_id}')
+            finally:
+                connection.close()
+        except sqlite3.Error as exc:
+            return Outcome(action, 'failed', str(exc))
+        return Outcome(action, 'done', f'{database.name}: id {row_id}')
+
+    def _do_service_quote(self, action: act.Action) -> Outcome:
+        if self.dry_run:
+            return Outcome(action, 'planned', 'взять ImagePath в кавычки')
+        if not registry.exists(action.path):
+            return Outcome(action, 'not_found', action.path)
+        self._backup_registry_value(action.path)
+        status = registry.set_value(action.path, 'ImagePath',
+                                    'REG_EXPAND_SZ', action.value)
+        return Outcome(action, status, action.value)
 
     def _do_file(self, action: act.Action) -> Outcome:
         return self._delete_path(action, action.path)
@@ -379,6 +492,14 @@ class Fixer:
                     continue
         return Outcome(action, 'done', f'удалено объектов: {removed}')
 
+    def _do_browser_cache(self, action: act.Action) -> Outcome:
+        from . import browsers
+
+        if self.dry_run:
+            return Outcome(action, 'planned', 'очистить кэш и куки браузеров')
+        removed = browsers.clear_cache_and_cookies()
+        return Outcome(action, 'done', f'очищено кэша/куки: {removed}')
+
     def _do_export_key(self, action: act.Action) -> Outcome:
         if self.dry_run:
             return Outcome(action, 'planned', 'экспорт ветки')
@@ -399,6 +520,30 @@ class Fixer:
         return Outcome(action, 'done', 'перезагрузка запланирована')
 
     # --- бэкапы ------------------------------------------------------------
+    def _backup_task(self, name: str) -> bool:
+        """Сохранить XML задачи перед удалением (для отката)."""
+        try:
+            completed = _run(['schtasks', '/Query', '/TN', '\\' + name, '/XML'],
+                             timeout=60)
+        except (OSError, subprocess.SubprocessError):
+            return False
+        if completed.returncode != 0 or not completed.stdout:
+            return False
+        digest = hashlib.sha1(name.encode('utf-8')).hexdigest()[:8]
+        filename = f'{registry.safe_name(name)[:80]}_{digest}.xml'
+        target = self.backup_dir / 'tasks' / filename
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(completed.stdout)
+        except OSError:
+            return False
+        self._manifest.append({
+            'kind': 'task',
+            'original': '\\' + name,
+            'stored': str(target.relative_to(self.backup_dir)),
+        })
+        return True
+
     def _backup_registry(self, notation: str) -> None:
         target = self.backup_dir / 'reg' / f'{registry.safe_name(notation)}.reg'
         ok, _message = registry.export_key(notation, str(target))

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import json
 from pathlib import Path
 from typing import Iterable, List
@@ -81,4 +82,11 @@ def clear(reports_dir: Path) -> None:
 
 def contains(items: Iterable[str], text: str) -> bool:
     key = normalize(text).casefold()
-    return any(item.casefold() == key for item in items)
+    for item in items:
+        item_key = item.casefold()
+        if item_key == key:
+            return True
+        if any(ch in item for ch in '*?['):
+            if fnmatch.fnmatchcase(key, item_key):
+                return True
+    return False

@@ -91,6 +91,14 @@ def read_values(root: int, path: str, view: int = VIEW_64) -> Dict[str, int]:
     return result
 
 
+def key_exists(root: int, path: str, view: int = VIEW_64) -> bool:
+    try:
+        with _open(root, path, view):
+            return True
+    except OSError:
+        return False
+
+
 def enum_keys(root: int, path: str, view: int = VIEW_64) -> List[str]:
     names: List[str] = []
     try:
@@ -550,6 +558,54 @@ def resolve_shortcut(path: str) -> Optional[ShortcutInfo]:
         ole32.CoUninitialize()
 
 
+def create_shortcut(path: str, target: str, arguments: str = '',
+                    working_dir: str = '') -> bool:
+    """Создать или перезаписать .lnk через Shell Link COM."""
+    if not IS_WINDOWS:
+        return False
+    ole32.CoInitializeEx(None, _COINIT_APARTMENTTHREADED)
+    link = ctypes.c_void_p()
+    persist = ctypes.c_void_p()
+    try:
+        hr = ole32.CoCreateInstance(ctypes.byref(_CLSID_SHELLLINK), None,
+                                    _CLSCTX_INPROC_SERVER, ctypes.byref(_IID_ISHELLLINKW),
+                                    ctypes.byref(link))
+        if hr != 0 or not link:
+            return False
+        set_path = _vtable_call(link, 20, ctypes.c_long, [wintypes.LPCWSTR])
+        if set_path(link, target) != 0:
+            return False
+        set_args = _vtable_call(link, 11, ctypes.c_long, [wintypes.LPCWSTR])
+        set_args(link, arguments)
+        if working_dir:
+            set_work = _vtable_call(link, 9, ctypes.c_long, [wintypes.LPCWSTR])
+            set_work(link, working_dir)
+        query_interface = _vtable_call(
+            link, 0, ctypes.c_long, [ctypes.POINTER(_GUID), ctypes.POINTER(ctypes.c_void_p)])
+        if query_interface(link, ctypes.byref(_IID_IPERSISTFILE),
+                           ctypes.byref(persist)) != 0 or not persist:
+            return False
+        save = _vtable_call(persist, 6, ctypes.c_long,
+                            [wintypes.LPCWSTR, wintypes.BOOL])
+        return save(persist, path, True) == 0
+    except OSError:
+        return False
+    finally:
+        if persist:
+            release = _vtable_call(persist, 2, ctypes.c_ulong, [])
+            try:
+                release(persist)
+            except OSError:
+                pass
+        if link:
+            release = _vtable_call(link, 2, ctypes.c_ulong, [])
+            try:
+                release(link)
+            except OSError:
+                pass
+        ole32.CoUninitialize()
+
+
 # ---------------------------------------------------------------------------
 # Процессы
 # ---------------------------------------------------------------------------
@@ -727,7 +783,10 @@ _TOKEN_USER_CLASS = 1
 _GRANT_ACCESS = 1
 _TRUSTEE_IS_SID = 0
 _TRUSTEE_IS_USER = 1
+_TRUSTEE_IS_WELL_KNOWN_GROUP = 5
 _GENERIC_ALL = 0x10000000
+_SE_FILE_OBJECT = 1
+_FILE_WRITE_DATA = 0x0002
 
 
 class _LUID(ctypes.Structure):
@@ -796,6 +855,15 @@ def _advapi() -> ctypes.WinDLL:
     advapi32.ConvertStringSidToSidW.restype = wintypes.BOOL
     advapi32.ConvertStringSidToSidW.argtypes = [
         wintypes.LPCWSTR, ctypes.POINTER(ctypes.c_void_p)]
+    advapi32.GetNamedSecurityInfoW.restype = wintypes.DWORD
+    advapi32.GetNamedSecurityInfoW.argtypes = [
+        wintypes.LPWSTR, ctypes.c_int, wintypes.DWORD, ctypes.c_void_p,
+        ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p), ctypes.c_void_p,
+        ctypes.POINTER(ctypes.c_void_p)]
+    advapi32.GetEffectiveRightsFromAclW.restype = wintypes.DWORD
+    advapi32.GetEffectiveRightsFromAclW.argtypes = [
+        ctypes.c_void_p, ctypes.POINTER(_TRUSTEE_W),
+        ctypes.POINTER(wintypes.DWORD)]
     return advapi32
 
 
@@ -858,6 +926,44 @@ def _current_user_sid() -> Optional[ctypes.c_void_p]:
             kernel32.LocalFree(sid_text)
     finally:
         kernel32.CloseHandle(token)
+
+
+def dir_writable_by_users(path: str) -> bool:
+    """Могут ли обычные пользователи создавать и перезаписывать файлы в папке."""
+    if not IS_WINDOWS:
+        return False
+    advapi32 = _advapi()
+    kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel32.LocalFree.restype = ctypes.c_void_p
+    kernel32.LocalFree.argtypes = [ctypes.c_void_p]
+    acl = ctypes.c_void_p()
+    descriptor = ctypes.c_void_p()
+    status = advapi32.GetNamedSecurityInfoW(
+        path, _SE_FILE_OBJECT, _DACL_SECURITY_INFORMATION, None, None,
+        ctypes.byref(acl), None, ctypes.byref(descriptor))
+    if status != 0 or not acl:
+        return False
+    try:
+        for sid_text in ('S-1-1-0', 'S-1-5-11', 'S-1-5-32-545', 'S-1-5-4'):
+            sid = ctypes.c_void_p()
+            if not advapi32.ConvertStringSidToSidW(sid_text, ctypes.byref(sid)):
+                continue
+            try:
+                trustee = _TRUSTEE_W()
+                trustee.TrusteeForm = _TRUSTEE_IS_SID
+                trustee.TrusteeType = _TRUSTEE_IS_WELL_KNOWN_GROUP
+                trustee.ptstrName = sid
+                mask = wintypes.DWORD()
+                if advapi32.GetEffectiveRightsFromAclW(
+                        acl, ctypes.byref(trustee), ctypes.byref(mask)) != 0:
+                    continue
+                if mask.value & _FILE_WRITE_DATA:
+                    return True
+            finally:
+                kernel32.LocalFree(sid)
+    finally:
+        kernel32.LocalFree(descriptor)
+    return False
 
 
 def take_registry_ownership(hive: int, subkey: str) -> bool:

@@ -164,6 +164,13 @@ QCheckBox::indicator:checked {{
     background: {ACCENT}; border-color: {ACCENT};
     image: url({_CHECK_ICON});
 }}
+QCheckBox#Deep {{ color: #FFFFFF; font-weight: 600; }}
+QCheckBox#Deep::indicator {{ border-color: #E5484D; }}
+QCheckBox#Deep::indicator:hover {{ border-color: #F87171; }}
+QCheckBox#Deep::indicator:checked {{
+    background: #E5484D; border-color: #E5484D;
+    image: url({_CHECK_ICON});
+}}
 QTableView::indicator {{
     width: 16px; height: 16px; border-radius: 4px;
     border: 1px solid {BORDER}; background: {CARD_ALT};
@@ -201,6 +208,8 @@ QHeaderView::section {{
     font-weight: 600;
 }}
 QTableWidget::item {{ padding: 8px 12px; border: none; }}
+QTableWidget#Results {{ font-size: 13px; }}
+QTableWidget#Results::item {{ padding: 2px 8px; border: none; }}
 
 QPlainTextEdit, QTextEdit {{
     background: #0B0E12;

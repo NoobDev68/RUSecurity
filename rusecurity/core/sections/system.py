@@ -118,7 +118,7 @@ def _registry_tasks() -> List[str]:
     return lines
 
 
-def scheduled_tasks(ctx: ScanContext) -> List[str]:
+def scheduled_tasks(ctx: ScanContext, include_microsoft: bool = False) -> List[str]:
     ctx.step('Запланированные задачи')
     guid_map = _task_guids()
     output = _schtasks_csv()
@@ -126,7 +126,10 @@ def scheduled_tasks(ctx: ScanContext) -> List[str]:
     if output:
         for row in csv.DictReader(io.StringIO(output)):
             name = (row.get('TaskName') or row.get('Имя задачи') or '').strip()
-            if not name or name.lower().startswith('\\microsoft\\windows\\'):
+            if not name:
+                continue
+            if (not include_microsoft
+                    and name.lower().startswith('\\microsoft\\windows\\')):
                 continue
             command = (row.get('Task To Run') or row.get('Задача для запуска') or '').strip()
             relative = name.lstrip('\\')

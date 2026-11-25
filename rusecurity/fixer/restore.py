@@ -130,7 +130,13 @@ def _restore_file(entry: QuarantineEntry) -> str:
         return 'missing'
     target = Path(entry.original)
     if target.exists():
-        return 'exists'
+        # Не затираем то, что появилось после исправления: убираем в бэкап.
+        displaced = entry.backup / 'replaced' / entry.stored.name
+        try:
+            displaced.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(target), str(displaced))
+        except (OSError, shutil.Error) as exc:
+            return f'failed: путь занят, не удалось убрать текущий файл ({exc})'
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(entry.stored), str(target))
@@ -166,6 +172,22 @@ def _restore_hosts(entry: QuarantineEntry) -> str:
         return f'failed: {exc}'
 
 
+def _restore_task(entry: QuarantineEntry) -> str:
+    if not entry.stored.is_file():
+        return 'missing'
+    try:
+        completed = subprocess.run(
+            ['schtasks', '/Create', '/TN', entry.original,
+             '/XML', str(entry.stored), '/F'],
+            capture_output=True, timeout=120, creationflags=0x08000000)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return f'failed: {exc}'
+    if completed.returncode != 0:
+        text = completed.stderr.decode('cp866', errors='replace').strip()
+        return f'failed: {text or "schtasks /Create"}'
+    return 'done'
+
+
 def restore_entry(entry: QuarantineEntry) -> Tuple[QuarantineEntry, str]:
     if entry.kind == 'reg_new':
         status = _restore_new_value(entry)
@@ -173,6 +195,8 @@ def restore_entry(entry: QuarantineEntry) -> Tuple[QuarantineEntry, str]:
         status = _restore_registry(entry)
     elif entry.kind == 'hosts':
         status = _restore_hosts(entry)
+    elif entry.kind == 'task':
+        status = _restore_task(entry)
     elif entry.kind == 'file_edit':
         status = _restore_edited_file(entry)
     else:

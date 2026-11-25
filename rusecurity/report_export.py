@@ -13,6 +13,7 @@ _DIRECTIVES = (
     ('restore_point', 'Точка восстановления'),
     ('close_processes', 'Закрыть блокирующие процессы'),
     ('empty_temp', 'Очистить временные файлы'),
+    ('browser_cache', 'Очистить кэш и куки браузеров'),
     ('reboot', 'Перезагрузка'),
 )
 
@@ -116,7 +117,7 @@ def export_zip(target: Path, reports_dir: Path, summary_text: str) -> Path:
     with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED) as archive:
         archive.writestr('summary.md', summary_text)
         for name in (names.REPORT, names.ADDITION, names.JOURNAL,
-                     names.FIXLOG, names.FIXLIST):
+                     names.FIXLOG, names.FIXLIST, names.DEEP):
             source = reports_dir / name
             if source.is_file():
                 archive.write(source, arcname=name)

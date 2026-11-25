@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
-from .. import names
+from .. import deep, names
 from . import sysinfo
 from .context import ScanContext
 from .model import Report
@@ -71,6 +71,7 @@ class ScanOptions:
     drives: bool = True
     event_errors: bool = True
     other_areas: bool = True
+    deep: bool = False
 
     def with_addition(self, enabled: bool) -> 'ScanOptions':
         return replace(self, **{name: enabled for name, _label in ADDITION_OPTIONS})
@@ -79,8 +80,11 @@ class ScanOptions:
         return any(getattr(self, name) for name, _label in ADDITION_OPTIONS)
 
     def enabled_labels(self) -> List[str]:
-        return [label for name, label in REPORT_OPTIONS + ADDITION_OPTIONS
-                if getattr(self, name)]
+        labels = [label for name, label in REPORT_OPTIONS + ADDITION_OPTIONS
+                  if getattr(self, name)]
+        if self.deep:
+            labels.append('Тщательное сканирование')
+        return labels
 
 
 @dataclass
@@ -89,6 +93,8 @@ class ScanResult:
     addition: Optional[Path]
     entries: int
     addition_entries: int = 0
+    deep: Optional[Path] = None
+    deep_count: int = 0
 
 
 def _date() -> str:
@@ -230,5 +236,19 @@ def scan(output_dir: Path, include_addition: bool = True,
             except OSError:
                 pass
     entries = sum(len(section.lines) for section in report.sections)
+    deep_path: Optional[Path] = None
+    deep_count = 0
+    if options.deep:
+        ctx.check_cancel()
+        items = deep.collect(ctx)
+        ctx.check_cancel()
+        deep_path = deep.save(output_dir / names.DEEP, report_path, items)
+        deep_count = len(items)
+    else:
+        try:
+            (output_dir / names.DEEP).unlink()
+        except OSError:
+            pass
     return ScanResult(report=report_path, addition=addition_path, entries=entries,
-                      addition_entries=addition_entries)
+                      addition_entries=addition_entries, deep=deep_path,
+                      deep_count=deep_count)
