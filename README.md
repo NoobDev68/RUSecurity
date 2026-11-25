@@ -66,7 +66,7 @@
 - Тёмная тема; русский и английский интерфейс переключается на лету, без
   перезапуска программы.
 
-![Главное окно] <img width="1182" height="708" alt="image" src="https://github.com/user-attachments/assets/c5462ce9-5d73-41a3-9fbf-e33144343b13" /> 
+![Главное окно]<img width="1182" height="708" alt="image" src="https://github.com/user-attachments/assets/c5462ce9-5d73-41a3-9fbf-e33144343b13" /> 
 
 ## Скачать и запустить
 
